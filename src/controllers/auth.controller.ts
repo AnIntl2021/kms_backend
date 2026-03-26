@@ -20,22 +20,25 @@ export const login = async (req: Request, res: Response) => {
        WHERE a.username = ? AND a.deleted_at IS NULL AND a.status = 'active'`,
       [username]
     );
-    console.log('Found rows:', rows.length);
 
-    const admin = rows[0];
-
-    if (!admin) {
+    if (!rows || rows.length === 0) {
+      console.log('❌ LOGIN FAILED: User not found or inactive');
       return errorResponse(res, 'Invalid credentials or account inactive', 401);
     }
 
-    const isMatch = await bcrypt.compare(password, admin.password);
-    const isLegacyMatch = password === 'admin123' && admin.password === '$2b$10$YourHashedPasswordHere';
+    const admin = rows[0];
+    console.log('✅ LOGIN SUCCESS: User found. Comparing passwords...');
+    console.log('Found user:', admin.username);
+    console.log('Found ID:', admin.admin_id);
 
-    if (!isMatch && !isLegacyMatch) {
-      return errorResponse(res, 'Invalid credentials', 401);
+    const isMatch = await bcrypt.compare(password, admin.password);
+    
+    if (!isMatch) {
+       console.log('❌ LOGIN FAILED: Password mismatch');
+       return errorResponse(res, 'Invalid credentials', 401);
     }
 
-    console.log('Generating token for admin:', admin.admin_id);
+    console.log('✅ PASSWORDS MATCH! Generating token for admin:', admin.admin_id);
     const token = generateToken({ 
       admin_id: admin.admin_id, 
       username: admin.username, 

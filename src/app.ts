@@ -1,5 +1,9 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 import helmet from 'helmet';
 import morgan from 'morgan';
 import { config } from './config/config';
@@ -18,6 +22,7 @@ app.use(helmet());
 app.use(morgan(config.env === 'development' ? 'dev' : 'combined'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Global Health Check
 app.get('/health', (req, res) => {

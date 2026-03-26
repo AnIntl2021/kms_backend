@@ -40,12 +40,17 @@ export const createMenuItem = async (req: Request, res: Response) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    const { name_en, name_ar, category_id, price, description_en, description_ar, ingredients } = req.body;
+    const { name_en, name_ar, category_id, price, cost_price, description_en, description_ar } = req.body;
+    let { ingredients } = req.body;
+
+    // ... (rest of parsing logic) ...
+
+    const image_url = req.file ? `/uploads/menu/${req.file.filename}` : null;
 
     // 1. Create Menu Item
     const [result]: any = await connection.execute(
-      'INSERT INTO menu_items (category_id, name_en, name_ar, price, description_en, description_ar) VALUES (?, ?, ?, ?, ?, ?)',
-      [category_id, name_en, name_ar, price, description_en || null, description_ar || null]
+      'INSERT INTO menu_items (category_id, name_en, name_ar, price, cost_price, description_en, description_ar, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [category_id, name_en, name_ar, price, cost_price || 0, description_en || null, description_ar || null, image_url]
     );
     const menu_item_id = result.insertId;
 
