@@ -6,6 +6,7 @@ import vendorRoutes from './vendor.routes';
 import purchaseRoutes from './purchase.routes';
 import menuRoutes from './menu.routes';
 import branchRoutes from './branch.routes';
+import salesRoutes from './sales.routes';
 
 const router = Router();
 
@@ -16,5 +17,6 @@ router.use('/vendors', vendorRoutes);
 router.use('/purchases', purchaseRoutes);
 router.use('/menu', menuRoutes);
 router.use('/branches', branchRoutes);
+router.use('/sales', salesRoutes);
 
 export default router;
