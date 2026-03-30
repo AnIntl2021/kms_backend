@@ -82,3 +82,57 @@ export const getRoles = async (req: Request, res: Response) => {
 export const getProfile = async (req: any, res: Response) => {
   return successResponse(res, { admin: req.user });
 };
+
+export const getUsers = async (req: Request, res: Response) => {
+  try {
+    const [users]: any = await pool.execute(`
+      SELECT a.admin_id, a.username, a.email, a.first_name, a.last_name, a.status, a.created_at, r.role_name 
+      FROM admins a 
+      JOIN roles r ON a.role_id = r.role_id 
+      WHERE a.deleted_at IS NULL
+    `);
+    return successResponse(res, users);
+  } catch (error) {
+    return errorResponse(res, 'Failed to fetch users', 500, error);
+  }
+};
+
+export const getAuditLogs = async (req: Request, res: Response) => {
+  try {
+    const [logs]: any = await pool.execute(`
+      SELECT al.*, a.username 
+      FROM audit_logs al 
+      LEFT JOIN admins a ON al.admin_id = a.admin_id 
+      ORDER BY al.created_at DESC 
+      LIMIT 200
+    `);
+    return successResponse(res, logs);
+  } catch (error) {
+    return errorResponse(res, 'Failed to fetch audit logs', 500, error);
+  }
+};
+
+export const createUser = async (req: any, res: Response) => {
+  try {
+    const { username, email, password, role_id, first_name, last_name, status } = req.body;
+
+    // Check if exists
+    const [existing]: any = await pool.execute('SELECT admin_id FROM admins WHERE username = ? OR email = ?', [username, email]);
+    if (existing.length > 0) return errorResponse(res, 'Username or Email already exists', 400);
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const [result]: any = await pool.execute(
+      'INSERT INTO admins (username, email, password, role_id, first_name, last_name, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [username, email, hashedPassword, role_id, first_name, last_name, status || 'active']
+    );
+
+    await pool.execute(
+      'INSERT INTO audit_logs (admin_id, action, entity_name, entity_id) VALUES (?, ?, ?, ?)',
+      [req.user?.admin_id || 1, 'USER_CREATED', 'Admin', result.insertId]
+    );
+
+    return successResponse(res, { admin_id: result.insertId }, 'User created successfully', 201);
+  } catch (error) {
+    return errorResponse(res, 'Failed to create user', 500, error);
+  }
+};

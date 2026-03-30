@@ -39,6 +39,26 @@ export const createSale = async (req: any, res: Response) => {
         'INSERT INTO sales_order_items (sale_id, menu_item_id, quantity, price) VALUES (?, ?, ?, ?)',
         [sale_id, item.menu_item_id, item.quantity, item.price]
       );
+
+      // --- STOCK DEDUCTION (BOM - BILL OF MATERIALS) ---
+      const [ingredients]: any = await connection.execute(
+        'SELECT inventory_item_id, quantity FROM menu_item_ingredients WHERE menu_item_id = ?',
+        [item.menu_item_id]
+      );
+
+      for (const ingredient of ingredients) {
+        const totalDeduction = ingredient.quantity * item.quantity;
+        await connection.execute(
+          'UPDATE inventory_items SET current_stock = current_stock - ? WHERE inventory_item_id = ?',
+          [totalDeduction, ingredient.inventory_item_id]
+        );
+        
+        // Log movement
+        await connection.execute(
+          'INSERT INTO audit_logs (admin_id, action, entity_name, entity_id, new_values) VALUES (?, ?, ?, ?, ?)',
+          [admin_id, 'Stock Deduction (Sale)', 'InventoryItem', ingredient.inventory_item_id, JSON.stringify({ sale_id, deducted_qty: totalDeduction })]
+        );
+      }
     }
 
     await connection.commit();
