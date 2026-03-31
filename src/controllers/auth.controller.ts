@@ -12,13 +12,13 @@ export const login = async (req: Request, res: Response) => {
       return errorResponse(res, 'Username and password are required', 400);
     }
 
-    console.log('Attempting login for username:', username);
+    console.log('Attempting login for:', username);
     const [rows]: any = await pool.execute(
       `SELECT a.*, r.role_name, r.display_name_en, r.display_name_ar 
        FROM admins a 
        JOIN roles r ON a.role_id = r.role_id 
-       WHERE a.username = ? AND a.deleted_at IS NULL AND a.status = 'active'`,
-      [username]
+       WHERE (a.username = ? OR a.email = ?) AND a.deleted_at IS NULL AND a.status = 'active'`,
+      [username, username] // Check both fields with the same input
     );
 
     if (!rows || rows.length === 0) {

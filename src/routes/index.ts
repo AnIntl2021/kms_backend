@@ -9,6 +9,8 @@ import branchRoutes from './branch.routes';
 import salesRoutes from './sales.routes';
 import accountsRoutes from './accounts.routes';
 import factoryRoutes from './factory.routes';
+import settingsRoutes from './settings.routes';
+import analyticsRoutes from './analytics.routes';
 
 const router = Router();
 
@@ -22,5 +24,7 @@ router.use('/branches', branchRoutes);
 router.use('/sales', salesRoutes);
 router.use('/accounts', accountsRoutes);
 router.use('/factory', factoryRoutes);
+router.use('/settings', settingsRoutes);
+router.use('/analytics', analyticsRoutes);
 
 export default router;

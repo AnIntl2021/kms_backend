@@ -74,6 +74,61 @@ export const createMenuItem = async (req: Request, res: Response) => {
   }
 };
 
+export const updateMenuItem = async (req: Request, res: Response) => {
+  const connection = await pool.getConnection();
+  try {
+    const { id } = req.params;
+    await connection.beginTransaction();
+    
+    // 1. Check if item exists
+    const [existing]: any = await connection.execute('SELECT image_url FROM menu_items WHERE menu_item_id = ?', [id]);
+    if (existing.length === 0) throw new Error('Item not found');
+
+    const { name_en, name_ar, category_id, price, cost_price, description_en, description_ar, status } = req.body;
+    let ingredients = req.body.ingredients;
+    if (typeof ingredients === 'string') ingredients = JSON.parse(ingredients);
+
+    const image_url = req.file ? `/uploads/menu/${req.file.filename}` : existing[0].image_url;
+
+    // 2. Update Menu Item Header
+    await connection.execute(
+      `UPDATE menu_items SET 
+        category_id = ?, 
+        name_en = ?, 
+        name_ar = ?, 
+        price = ?, 
+        cost_price = ?, 
+        description_en = ?, 
+        description_ar = ?, 
+        image_url = ?,
+        status = ?
+      WHERE menu_item_id = ?`,
+      [category_id, name_en, name_ar, price, cost_price || 0, description_en || null, description_ar || null, image_url, status || 'available', id]
+    );
+
+    // 3. Update Ingredients (Delete and Re-insert)
+    await connection.execute('DELETE FROM menu_item_ingredients WHERE menu_item_id = ?', [id]);
+    if (ingredients && Array.isArray(ingredients)) {
+      for (const ing of ingredients) {
+        if (ing.inventory_item_id && ing.quantity) {
+          await connection.execute(
+            'INSERT INTO menu_item_ingredients (menu_item_id, inventory_item_id, quantity) VALUES (?, ?, ?)',
+            [id, ing.inventory_item_id, ing.quantity]
+          );
+        }
+      }
+    }
+
+    await connection.commit();
+    return successResponse(res, null, 'Menu item updated successfully');
+  } catch (error: any) {
+    await connection.rollback();
+    return errorResponse(res, error.message || 'Failed to update menu item', 500, error);
+  } finally {
+    connection.release();
+  }
+};
+
 export const deleteMenuItem = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;

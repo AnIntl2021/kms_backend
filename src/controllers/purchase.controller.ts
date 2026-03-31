@@ -59,22 +59,24 @@ export const createPurchaseOrder = async (req: Request, res: Response) => {
       additional_charges,
       final_amount,
       items, 
-      notes 
+      notes,
+      date 
     } = req.body;
     const admin_id = (req as any).user.admin_id;
 
     // 1. Create Header
     const [result]: any = await connection.execute(
       `INSERT INTO purchase_orders (
-        vendor_id, admin_id, branch_id, po_number, invoice_type, 
+        vendor_id, admin_id, branch_id, po_number, date, invoice_type, 
         total_amount, tax_amount, discount_amount, discount_percentage, 
         additional_charges, final_amount, notes, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         vendor_id, 
         admin_id, 
         branch_id || 1, 
         po_number, 
+        date || new Date().toISOString().split('T')[0],
         invoice_type || 'tax_invoice',
         0, // total_amount calculated from items
         tax_amount || 0,
@@ -190,7 +192,8 @@ export const updatePurchaseOrder = async (req: Request, res: Response) => {
       additional_charges,
       final_amount,
       items, 
-      notes 
+      notes,
+      date 
     } = req.body;
 
     await connection.beginTransaction();
@@ -217,7 +220,8 @@ export const updatePurchaseOrder = async (req: Request, res: Response) => {
         discount_percentage = ?,
         additional_charges = ?,
         final_amount = ?,
-        notes = ? 
+        notes = ?,
+        date = ?
       WHERE purchase_id = ?`,
       [
         vendor_id, 
@@ -230,6 +234,7 @@ export const updatePurchaseOrder = async (req: Request, res: Response) => {
         additional_charges || 0,
         final_amount || 0,
         notes || null, 
+        date || new Date().toISOString().split('T')[0],
         id
       ]
     );

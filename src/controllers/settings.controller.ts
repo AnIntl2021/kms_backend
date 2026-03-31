@@ -1,38 +1,39 @@
 import { Request, Response } from 'express';
-import { successResponse, errorResponse } from '../utils/response';
 import pool from '../config/db';
-import { logAudit } from '../utils/audit';
+import { successResponse, errorResponse } from '../utils/response';
 
 export const getSettings = async (req: Request, res: Response) => {
   try {
-    const [rows]: any = await pool.execute('SELECT setting_key, setting_value FROM system_settings');
-    const settings = rows.reduce((acc: any, row: any) => {
-      acc[row.setting_key] = row.setting_value;
+    const [settings] = await pool.execute('SELECT * FROM system_settings');
+    // Map to a more useful object
+    const settingsObj = (settings as any[]).reduce((acc, curr) => {
+      acc[curr.setting_key] = curr.setting_value;
       return acc;
     }, {});
     
-    return successResponse(res, settings);
+    return successResponse(res, settingsObj);
   } catch (error) {
+    console.error('GetSettings Error:', error);
     return errorResponse(res, 'Failed to fetch settings', 500, error);
   }
 };
 
-export const updateSetting = async (req: any, res: Response) => {
+export const updateSettings = async (req: Request, res: Response) => {
   try {
-    const { key, value } = req.body;
+    const settings = req.body; // Expecting { key: value, ... }
     
-    const [oldRows]: any = await pool.execute('SELECT setting_value FROM system_settings WHERE setting_key = ?', [key]);
-    const oldValue = oldRows[0]?.setting_value;
-
-    await pool.execute(
-      'UPDATE system_settings SET setting_value = ? WHERE setting_key = ?',
-      [value, key]
-    );
-
-    await logAudit(req.user.admin_id, 'UPDATE_SETTING', 'system_settings', null, { [key]: oldValue }, { [key]: value }, req);
-
-    return successResponse(res, null, `Setting ${key} updated successfully`);
+    const queries = Object.keys(settings).map(key => {
+      return pool.execute(
+        'INSERT INTO system_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = ?',
+        [key, settings[key], settings[key]]
+      );
+    });
+    
+    await Promise.all(queries);
+    
+    return successResponse(res, null, 'Settings updated successfully');
   } catch (error) {
-    return errorResponse(res, 'Failed to update setting', 500, error);
+    console.error('UpdateSettings Error:', error);
+    return errorResponse(res, 'Failed to update settings', 500, error);
   }
 };
