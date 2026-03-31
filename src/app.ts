@@ -16,10 +16,13 @@ const app = express();
 // Middlewares
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  const allowedOrigins = [config.corsOrigin, 'https://freshnfastkw.com', 'http://freshnfastkw.com'];
-  if (origin && (allowedOrigins.includes(origin) || origin.endsWith('freshnfastkw.com'))) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
+  const isDev = config.env === 'development';
+  const allowedOrigins = [config.corsOrigin, 'https://freshnfastkw.com', 'http://freshnfastkw.com', 'http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:5176'];
+  
+  if (!origin || isDev || allowedOrigins.includes(origin) || origin.endsWith('freshnfastkw.com')) {
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
   }
+  
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
