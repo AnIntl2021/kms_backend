@@ -14,21 +14,19 @@ import { errorHandler } from './middleware/error.middleware';
 const app = express();
 
 // Middlewares
-const allowedOrigins = [config.corsOrigin, 'https://freshnfastkw.com', 'http://freshnfastkw.com'];
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.indexOf(origin) !== -1 || config.env === 'development') {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-}));
-app.options('*', cors()); // Enable pre-flight for all routes
-app.use(helmet());
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  const allowedOrigins = [config.corsOrigin, 'https://freshnfastkw.com', 'http://freshnfastkw.com'];
+  if (origin && (allowedOrigins.includes(origin) || origin.endsWith('freshnfastkw.com'))) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(morgan(config.env === 'development' ? 'dev' : 'combined'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
