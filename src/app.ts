@@ -14,10 +14,20 @@ import { errorHandler } from './middleware/error.middleware';
 const app = express();
 
 // Middlewares
+const allowedOrigins = [config.corsOrigin, 'https://freshnfastkw.com', 'http://freshnfastkw.com'];
 app.use(cors({
-  origin: config.corsOrigin,
-  credentials: true
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.indexOf(origin) !== -1 || config.env === 'development') {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
+app.options('*', cors()); // Enable pre-flight for all routes
 app.use(helmet());
 app.use(morgan(config.env === 'development' ? 'dev' : 'combined'));
 app.use(express.json());
