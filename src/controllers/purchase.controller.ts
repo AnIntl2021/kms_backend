@@ -144,20 +144,35 @@ export const receivePurchaseOrder = async (req: Request, res: Response) => {
     if (orders.length === 0) throw new Error('PO not found');
     if (orders[0].status !== 'pending' && orders[0].status !== 'partially_received') throw new Error('PO is not in a receivable state');
 
-    // 2. Get PO items
-    const [items]: any = await connection.execute('SELECT inventory_item_id, quantity FROM purchase_order_items WHERE purchase_id = ?', [id]);
+    // 2. Get PO items with multipliers
+    const [items]: any = await connection.execute(`
+      SELECT poi.inventory_item_id, poi.quantity, ip.multiplier
+      FROM purchase_order_items poi
+      LEFT JOIN inventory_packages ip ON poi.package_id = ip.package_id
+      WHERE poi.purchase_id = ?
+    `, [id]);
 
-    // 3. Update stock levels
+    // 3. Update stock levels based on multipliers
     for (const item of items) {
+      const multiplier = Number(item.multiplier || 1);
+      const totalStockToAdd = Number(item.quantity) * multiplier;
+      
+      console.log(`📦 RECEIVING STOCK: ItemID=${item.inventory_item_id}, RawQty=${item.quantity}, Multiplier=${multiplier}, FinalStock=+${totalStockToAdd}`);
+      
       await connection.execute(
         'UPDATE inventory_items SET current_stock = current_stock + ? WHERE inventory_item_id = ?',
-        [item.quantity, item.inventory_item_id]
+        [totalStockToAdd, item.inventory_item_id]
       );
       
-      // Log individual stock movements
+      // Log individual stock movements with multiplier context
       await connection.execute(
         'INSERT INTO audit_logs (admin_id, action, entity_name, entity_id, new_values) VALUES (?, ?, ?, ?, ?)',
-        [admin_id, 'Purchase In', 'InventoryItem', item.inventory_item_id, JSON.stringify({ received_qty: item.quantity, purchase_id: id })]
+        [admin_id, 'Purchase In (Multiplied)', 'InventoryItem', item.inventory_item_id, JSON.stringify({ 
+          received_raw_qty: item.quantity, 
+          multiplier: multiplier,
+          final_restored_stock: totalStockToAdd,
+          purchase_id: id 
+        })]
       );
     }
 
