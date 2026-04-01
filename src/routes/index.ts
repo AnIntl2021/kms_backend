@@ -11,12 +11,14 @@ import accountsRoutes from './accounts.routes';
 import factoryRoutes from './factory.routes';
 import settingsRoutes from './settings.routes';
 import analyticsRoutes from './analytics.routes';
+import wastageRoutes from './wastage.routes';
 
 const router = Router();
 
 router.use('/auth', authRoutes);
 router.use('/business', businessRoutes);
 router.use('/inventory', inventoryRoutes);
+router.use('/wastage', wastageRoutes);
 router.use('/vendors', vendorRoutes);
 router.use('/purchases', purchaseRoutes);
 router.use('/menu', menuRoutes);

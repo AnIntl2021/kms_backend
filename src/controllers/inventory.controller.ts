@@ -91,7 +91,18 @@ export const updateInventoryItem = async (req: any, res: Response) => {
       `UPDATE inventory_items 
        SET name_en = ?, name_ar = ?, sku = ?, category_id = ?, min_stock_level = ?, unit_en = ?, unit_ar = ?, cost_price = ?, sort_order = ?, updated_at = CURRENT_TIMESTAMP 
        WHERE inventory_item_id = ?`,
-      [name_en, name_ar, sku, category_id, min_stock_level, unit_en, unit_ar, cost_price, sort_order, id]
+      [
+        name_en || oldData.name_en, 
+        name_ar || oldData.name_ar, 
+        sku || oldData.sku, 
+        category_id || oldData.category_id, 
+        min_stock_level !== undefined ? min_stock_level : oldData.min_stock_level, 
+        unit_en || oldData.unit_en, 
+        unit_ar || oldData.unit_ar, 
+        cost_price !== undefined ? cost_price : oldData.cost_price, 
+        sort_order !== undefined ? sort_order : oldData.sort_order, 
+        id
+      ]
     );
 
     if (packages && Array.isArray(packages)) {

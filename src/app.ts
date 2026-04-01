@@ -14,30 +14,15 @@ import { errorHandler } from './middleware/error.middleware';
 const app = express();
 
 // Middlewares
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  const isDev = config.env === 'development';
-  console.log(`📡 CONNECTION PROBE | Origin: ${origin} | Method: ${req.method} | ENV: ${config.env}`);
-  
-  if (!origin || isDev || origin.includes('freshnfastkw.com') || origin.includes('localhost')) {
-    res.setHeader('Access-Control-Allow-Origin', origin || '*');
-  }
-  
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Origin, Accept');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  
-  if (req.method === 'OPTIONS') {
-    console.log(`✅ PREFLIGHT AUTHORIZED | Origin: ${origin}`);
-    return res.sendStatus(204);
-  }
-  next();
-});
-app.use(helmet({ contentSecurityPolicy: false }));
+app.use(helmet({ 
+  contentSecurityPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
+app.use(cors({ origin: '*', credentials: true }));
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 app.use(morgan(config.env === 'development' ? 'dev' : 'combined'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Global Health Check
 app.get('/health', (req, res) => {
