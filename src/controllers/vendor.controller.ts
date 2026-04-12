@@ -45,6 +45,7 @@ export const createVendor = async (req: Request, res: Response) => {
     return successResponse(res, { vendor_id: partnerId }, 'Partner & Branches registered successfully', 201);
   } catch (error) {
     await connection.rollback();
+    console.error('Create Vendor Error:', error);
     return errorResponse(res, 'Failed to register partner network', 500, error);
   } finally {
     connection.release();
@@ -80,6 +81,7 @@ export const updateVendor = async (req: Request, res: Response) => {
     return successResponse(res, null, 'Partner project updated successfully');
   } catch (error) {
     await connection.rollback();
+    console.error('Update Vendor Error:', error);
     return errorResponse(res, 'Failed to update distribution network', 500, error);
   } finally {
     connection.release();
