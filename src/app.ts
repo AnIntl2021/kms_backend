@@ -57,19 +57,29 @@ const initDistributionEngine = async () => {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         `);
 
-        // 🛡️ ELITE BRANCH SEGREGATION SYNC (Altering existing tables for KFC Logic)
-        await pool.execute(`
-            ALTER TABLE sales_orders 
-            ADD COLUMN IF NOT EXISTS branch_id INT DEFAULT NULL,
-            ADD CONSTRAINT fk_sales_order_branch FOREIGN KEY (branch_id) REFERENCES partner_branches(branch_id) ON DELETE SET NULL;
-        `);
+        // 🛡️ ELITE BRANCH SEGREGATION SYNC
+        try {
+            await pool.execute(`ALTER TABLE sales_orders ADD COLUMN branch_id INT DEFAULT NULL`);
+        } catch (err: any) {
+            if (err.errno !== 1060) console.error("Sales Order Column Sync:", err.message);
+        }
+        try {
+            await pool.execute(`ALTER TABLE sales_orders ADD CONSTRAINT fk_sales_order_branch FOREIGN KEY (branch_id) REFERENCES partner_branches(branch_id) ON DELETE SET NULL`);
+        } catch (err: any) {
+            if (err.errno !== 1061) console.error("Sales Order Constraint Sync:", err.message);
+        }
 
         // 🛡️ ELITE PROCUREMENT SEGREGATION SYNC
-        await pool.execute(`
-            ALTER TABLE purchase_orders 
-            ADD COLUMN IF NOT EXISTS branch_id INT DEFAULT NULL,
-            ADD CONSTRAINT fk_purchase_order_branch FOREIGN KEY (branch_id) REFERENCES partner_branches(branch_id) ON DELETE SET NULL;
-        `);
+        try {
+            await pool.execute(`ALTER TABLE purchase_orders ADD COLUMN branch_id INT DEFAULT NULL`);
+        } catch (err: any) {
+            if (err.errno !== 1060) console.error("Purchase Order Column Sync:", err.message);
+        }
+        try {
+            await pool.execute(`ALTER TABLE purchase_orders ADD CONSTRAINT fk_purchase_order_branch FOREIGN KEY (branch_id) REFERENCES partner_branches(branch_id) ON DELETE SET NULL`);
+        } catch (err: any) {
+            if (err.errno !== 1061) console.error("Purchase Order Constraint Sync:", err.message);
+        }
 
         console.log("🚚 Distribution Branch Hub: INITIALIZED & READY. 🛡️🚀");
     } catch (err) {
