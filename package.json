@@ -9,6 +9,7 @@
     "dev:staging": "set NODE_ENV=staging&& tsx watch src/server.ts",
     "dev:prod": "set NODE_ENV=production&& tsx watch src/server.ts",
     "build": "rimraf dist && tsc",
+    "build:fast": "rimraf dist && npx -y esbuild src/server.ts --bundle --platform=node --target=node20 --outfile=dist/server.js --format=esm --packages=external",
     "start": "node dist/server.js"
   },
   "keywords": [],
