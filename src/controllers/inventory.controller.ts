@@ -8,7 +8,8 @@ export const getInventoryItems = async (req: Request, res: Response) => {
     const { category_id, search } = req.query;
     
     let query = `
-      SELECT i.*, c.name_en as category_name_en, c.name_ar as category_name_ar 
+      SELECT i.*, c.name_en as category_name_en, c.name_ar as category_name_ar,
+      (SELECT cost_per_unit FROM inventory_batches WHERE inventory_item_id = i.inventory_item_id AND status = 'active' ORDER BY created_at ASC LIMIT 1) as dynamic_cost_price
       FROM inventory_items i 
       LEFT JOIN categories c ON i.category_id = c.category_id 
       WHERE i.deleted_at IS NULL

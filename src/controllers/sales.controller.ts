@@ -69,7 +69,7 @@ export const createSale = async (req: any, res: Response) => {
       const [ingredients]: any = await connection.execute(`
         SELECT mii.inventory_item_id, mii.quantity, mii.package_id, ip.multiplier
         FROM menu_item_ingredients mii
-        LEFT JOIN inventory_packages ip ON mii.package_id = ip.package_id
+        LEFT JOIN inventory_item_packages ip ON mii.package_id = ip.package_id
         WHERE mii.menu_item_id = ?
       `, [item.menu_item_id]);
 
@@ -83,6 +83,33 @@ export const createSale = async (req: any, res: Response) => {
 
         const totalDeduction = Number(ingredient.quantity) * Number(item.quantity) * multiplier;
         
+        // 🛡️ THE MAYONNAISE FIFO CONSUMER ORACLE
+        let remainingToDeduct = totalDeduction;
+
+        // Fetch all active batches for this ingredient (Oldest First)
+        const [batches]: any = await connection.execute(
+          'SELECT batch_id, remaining_quantity FROM inventory_batches WHERE inventory_item_id = ? AND status = "active" ORDER BY created_at ASC FOR UPDATE',
+          [ingredient.inventory_item_id]
+        );
+
+        for (const batch of batches) {
+          if (remainingToDeduct <= 0) break;
+
+          const batchQty = Number(batch.remaining_quantity);
+          const deductFromThisBatch = Math.min(batchQty, remainingToDeduct);
+          const newBatchQty = batchQty - deductFromThisBatch;
+          remainingToDeduct -= deductFromThisBatch;
+
+          // Update the batch remains
+          await connection.execute(
+            'UPDATE inventory_batches SET remaining_quantity = ?, status = ? WHERE batch_id = ?',
+            [newBatchQty, newBatchQty <= 0 ? 'exhausted' : 'active', batch.batch_id]
+          );
+
+          console.log(`📡 FIFO CONSUMED: BatchID=${batch.batch_id}, Deducted=${deductFromThisBatch}, Remains=${newBatchQty}`);
+        }
+
+        // Finalize global stock count (For metrics)
         await connection.execute(
           'UPDATE inventory_items SET current_stock = current_stock - ? WHERE inventory_item_id = ?',
           [totalDeduction, ingredient.inventory_item_id]
@@ -128,7 +155,7 @@ export const returnOrder = async (req: Request, res: Response) => {
   const connection = await pool.getConnection();
   try {
     const { id } = req.params;
-    const saleId = parseInt(id);
+    const saleId = parseInt(id as string);
     const admin_id = (req as any).user?.admin_id || 1;
 
     console.log('🔄 STARTING ORDER RETURN:', { saleId });
@@ -147,7 +174,7 @@ export const returnOrder = async (req: Request, res: Response) => {
       const [ingredients]: any = await connection.execute(`
         SELECT mii.inventory_item_id, mii.quantity, mii.package_id, ip.multiplier
         FROM menu_item_ingredients mii
-        LEFT JOIN inventory_packages ip ON mii.package_id = ip.package_id
+        LEFT JOIN inventory_item_packages ip ON mii.package_id = ip.package_id
         WHERE mii.menu_item_id = ?
       `, [item.menu_item_id]);
 
@@ -160,8 +187,22 @@ export const returnOrder = async (req: Request, res: Response) => {
         }
 
         const totalRestoration = Number(ingredient.quantity) * Number(item.quantity) * multiplier;
-        console.log(`🔋 RESTORING INGREDIENT: id=${ingredient.inventory_item_id}, qty=${totalRestoration}`);
+        console.log(`🔋 RESTORING INGREDIENT FIFO: id=${ingredient.inventory_item_id}, qty=${totalRestoration}`);
         
+        // 🛡️ RE-INTEGRATE INTO OLDEST ACTIVE BATCH
+        // (Maintaining the FIFO priority for the next sale)
+        const [targetBatch]: any = await connection.execute(
+          'SELECT batch_id FROM inventory_batches WHERE inventory_item_id = ? AND status = "active" ORDER BY created_at ASC LIMIT 1',
+          [ingredient.inventory_item_id]
+        );
+
+        if (targetBatch.length > 0) {
+          await connection.execute(
+            'UPDATE inventory_batches SET remaining_quantity = remaining_quantity + ?, status = "active" WHERE batch_id = ?',
+            [totalRestoration, targetBatch[0].batch_id]
+          );
+        }
+
         await connection.execute(
           'UPDATE inventory_items SET current_stock = current_stock + ? WHERE inventory_item_id = ?',
           [totalRestoration, ingredient.inventory_item_id]

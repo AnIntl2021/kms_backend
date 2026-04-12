@@ -53,13 +53,15 @@ export const createSalesOrder = async (req: Request, res: Response) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    const { vendor_id, customer_name, items, payment_method, order_number, batch_number, expiry_date } = req.body;
+    const { vendor_id, branch_id, customer_name, items, payment_method, order_number, batch_number, expiry_date } = req.body;
     const admin_id = (req as any).user.admin_id;
 
     const numItems = items.reduce((acc: number, item: any) => acc + Number(item.quantity * item.price), 0);
+    
+    // 🛡️ BRANCH SEGREGATION ORACLE (Persist specific branch delivery node)
     const [orderRes]: any = await connection.execute(
-      `INSERT INTO sales_orders (order_number, vendor_id, customer_name, total_amount, payment_method, admin_id, batch_number, expiry_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [order_number || `SO-${Date.now()}`, vendor_id || null, customer_name || 'Counter Customer', numItems, payment_method || 'cash', admin_id, batch_number || null, expiry_date || null]
+      `INSERT INTO sales_orders (order_number, vendor_id, branch_id, customer_name, total_amount, payment_method, admin_id, batch_number, expiry_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [order_number || `SO-${Date.now()}`, vendor_id || null, branch_id === 'main' ? null : (branch_id || null), customer_name || 'Counter Customer', numItems, payment_method || 'cash', admin_id, batch_number || null, expiry_date || null]
     );
     const sale_id = orderRes.insertId;
 
@@ -78,7 +80,7 @@ export const createSalesOrder = async (req: Request, res: Response) => {
     }
 
     await connection.commit();
-    return successResponse(res, { sale_id }, 'Sale completed successfully.');
+    return successResponse(res, { sale_id }, 'Sale & Branch Dispatch completed.');
   } catch (error: any) {
     await connection.rollback();
     return errorResponse(res, error.message || 'Sales transaction failed');
@@ -92,9 +94,11 @@ export const getDispatches = async (req: Request, res: Response) => {
     const [dispatches]: any = await pool.execute(`
       SELECT 
         s.sale_id, s.order_number, s.total_amount, s.dispatch_status, s.created_at,
-        v.name_en as client_name
+        v.name_en as client_name,
+        pb.name_en as branch_name
       FROM sales_orders s
       LEFT JOIN vendors v ON s.vendor_id = v.vendor_id
+      LEFT JOIN partner_branches pb ON s.branch_id = pb.branch_id
       WHERE s.vendor_id IS NOT NULL
       ORDER BY s.created_at DESC
     `);

@@ -10,8 +10,75 @@ import { config } from './config/config';
 import { errorResponse } from './utils/response';
 import routes from './routes';
 import { errorHandler } from './middleware/error.middleware';
+import pool from './config/db';
 
 const app = express();
+
+// 🛡️ Fresh 'n' Fast - Elite FIFO Migration Hub
+// Automatically provisions the 'inventory_batches' table to track purchase costs per batch.
+const initFIFOEngine = async () => {
+    try {
+        await pool.execute(`
+            CREATE TABLE IF NOT EXISTS inventory_batches (
+                batch_id INT AUTO_INCREMENT PRIMARY KEY,
+                inventory_item_id INT NOT NULL,
+                purchase_id INT DEFAULT NULL,
+                original_quantity DECIMAL(15, 3) NOT NULL,
+                remaining_quantity DECIMAL(15, 3) NOT NULL,
+                cost_per_unit DECIMAL(15, 3) NOT NULL,
+                status ENUM('active', 'exhausted') DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (inventory_item_id) REFERENCES inventory_items(inventory_item_id) ON DELETE CASCADE,
+                INDEX idx_fifo_lookup (inventory_item_id, status, created_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
+        console.log("🏙️ FIFO Batch Oracle Profile: INITIALIZED & READY. 🛡️🚀");
+    } catch (err) {
+        console.error("⛔ FIFO Initialization Barrier:", err);
+    }
+};
+
+const initDistributionEngine = async () => {
+    try {
+        await pool.execute(`
+            CREATE TABLE IF NOT EXISTS partner_branches (
+                branch_id INT AUTO_INCREMENT PRIMARY KEY,
+                partner_id INT NOT NULL,
+                name_en VARCHAR(255) NOT NULL,
+                name_ar VARCHAR(255) DEFAULT NULL,
+                address TEXT DEFAULT NULL,
+                contact_person VARCHAR(255) DEFAULT NULL,
+                phone VARCHAR(50) DEFAULT NULL,
+                status ENUM('active', 'inactive') DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (partner_id) REFERENCES vendors(vendor_id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
+
+        // 🛡️ ELITE BRANCH SEGREGATION SYNC (Altering existing tables for KFC Logic)
+        await pool.execute(`
+            ALTER TABLE sales_orders 
+            ADD COLUMN IF NOT EXISTS branch_id INT DEFAULT NULL,
+            ADD CONSTRAINT fk_sales_order_branch FOREIGN KEY (branch_id) REFERENCES partner_branches(branch_id) ON DELETE SET NULL;
+        `);
+
+        // 🛡️ ELITE PROCUREMENT SEGREGATION SYNC
+        await pool.execute(`
+            ALTER TABLE purchase_orders 
+            ADD COLUMN IF NOT EXISTS branch_id INT DEFAULT NULL,
+            ADD CONSTRAINT fk_purchase_order_branch FOREIGN KEY (branch_id) REFERENCES partner_branches(branch_id) ON DELETE SET NULL;
+        `);
+
+        console.log("🚚 Distribution Branch Hub: INITIALIZED & READY. 🛡️🚀");
+    } catch (err) {
+        console.error("⛔ Distribution Initialization Barrier:", err);
+    }
+};
+
+initFIFOEngine();
+initDistributionEngine();
 
 // Middlewares
 app.use(helmet({ 
