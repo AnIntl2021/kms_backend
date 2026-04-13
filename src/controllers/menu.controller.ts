@@ -12,7 +12,9 @@ export const getMenuItems = async (req: Request, res: Response) => {
       ORDER BY mi.sort_order ASC, mi.name_en ASC
     `);
     return successResponse(res, items);
+    return errorResponse(res, 'Failed to fetch menu items', 500, error);
   } catch (error) {
+    console.error('getMenuItems Error:', error);
     return errorResponse(res, 'Failed to fetch menu items', 500, error);
   }
 };
@@ -32,6 +34,7 @@ export const getMenuItemDetails = async (req: Request, res: Response) => {
 
     return successResponse(res, { ...items[0], ingredients });
   } catch (error) {
+    console.error('getMenuItemDetails Error:', error);
     return errorResponse(res, 'Failed to fetch menu details', 500, error);
   }
 };
@@ -40,17 +43,24 @@ export const createMenuItem = async (req: Request, res: Response) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    const { name_en, name_ar, category_id, price, cost_price, description_en, description_ar } = req.body;
+    const { name_en, name_ar, category_id, price, cost_price, description_en, description_ar, type } = req.body;
     let { ingredients } = req.body;
-
-    // ... (rest of parsing logic) ...
+    
+    // Support Multipart/FormData (ingredients arrive as JSON string)
+    if (typeof ingredients === 'string') {
+      try {
+        ingredients = JSON.parse(ingredients);
+      } catch (e) {
+        ingredients = [];
+      }
+    }
 
     const image_url = req.file ? `/uploads/menu/${req.file.filename}` : null;
 
     // 1. Create Menu Item
     const [result]: any = await connection.execute(
-      'INSERT INTO menu_items (category_id, name_en, name_ar, price, cost_price, description_en, description_ar, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [category_id, name_en, name_ar, price, cost_price || 0, description_en || null, description_ar || null, image_url]
+      'INSERT INTO menu_items (category_id, name_en, name_ar, price, cost_price, type, description_en, description_ar, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [category_id, name_en, name_ar, price, cost_price || 0, type || 'selling', description_en || null, description_ar || null, image_url]
     );
     const menu_item_id = result.insertId;
 
@@ -58,8 +68,8 @@ export const createMenuItem = async (req: Request, res: Response) => {
     if (ingredients && Array.isArray(ingredients)) {
       for (const ing of ingredients) {
         await connection.execute(
-          'INSERT INTO menu_item_ingredients (menu_item_id, inventory_item_id, quantity) VALUES (?, ?, ?)',
-          [menu_item_id, ing.inventory_item_id, ing.quantity]
+          'INSERT INTO menu_item_ingredients (menu_item_id, inventory_item_id, package_id, quantity) VALUES (?, ?, ?, ?)',
+          [menu_item_id, ing.inventory_item_id, ing.package_id || null, ing.quantity]
         );
       }
     }
@@ -68,6 +78,7 @@ export const createMenuItem = async (req: Request, res: Response) => {
     return successResponse(res, { menu_item_id }, 'Menu item created with recipe', 201);
   } catch (error) {
     await connection.rollback();
+    console.error('createMenuItem Error:', error);
     return errorResponse(res, 'Failed to create menu item', 500, error);
   } finally {
     connection.release();
@@ -84,9 +95,11 @@ export const updateMenuItem = async (req: Request, res: Response) => {
     const [existing]: any = await connection.execute('SELECT image_url FROM menu_items WHERE menu_item_id = ?', [id]);
     if (existing.length === 0) throw new Error('Item not found');
 
-    const { name_en, name_ar, category_id, price, cost_price, description_en, description_ar, status } = req.body;
+    const { name_en, name_ar, category_id, price, cost_price, description_en, description_ar, status, type } = req.body;
     let ingredients = req.body.ingredients;
-    if (typeof ingredients === 'string') ingredients = JSON.parse(ingredients);
+    if (typeof ingredients === 'string') {
+       try { ingredients = JSON.parse(ingredients); } catch(e) { ingredients = []; }
+    }
 
     const image_url = req.file ? `/uploads/menu/${req.file.filename}` : existing[0].image_url;
 
@@ -98,12 +111,13 @@ export const updateMenuItem = async (req: Request, res: Response) => {
         name_ar = ?, 
         price = ?, 
         cost_price = ?, 
+        type = ?,
         description_en = ?, 
         description_ar = ?, 
         image_url = ?,
         status = ?
       WHERE menu_item_id = ?`,
-      [category_id, name_en, name_ar, price, cost_price || 0, description_en || null, description_ar || null, image_url, status || 'available', id]
+      [category_id, name_en, name_ar, price, cost_price || 0, type || 'selling', description_en || null, description_ar || null, image_url, status || 'available', id]
     );
 
     // 3. Update Ingredients (Delete and Re-insert)
@@ -112,8 +126,8 @@ export const updateMenuItem = async (req: Request, res: Response) => {
       for (const ing of ingredients) {
         if (ing.inventory_item_id && ing.quantity) {
           await connection.execute(
-            'INSERT INTO menu_item_ingredients (menu_item_id, inventory_item_id, quantity) VALUES (?, ?, ?)',
-            [id, ing.inventory_item_id, ing.quantity]
+            'INSERT INTO menu_item_ingredients (menu_item_id, inventory_item_id, package_id, quantity) VALUES (?, ?, ?, ?)',
+            [id, ing.inventory_item_id, ing.package_id || null, ing.quantity]
           );
         }
       }
@@ -135,6 +149,7 @@ export const deleteMenuItem = async (req: Request, res: Response) => {
     await pool.execute('UPDATE menu_items SET deleted_at = CURRENT_TIMESTAMP WHERE menu_item_id = ?', [id]);
     return successResponse(res, null, 'Menu item deleted');
   } catch (error) {
+    console.error('deleteMenuItem Error:', error);
     return errorResponse(res, 'Failed to delete menu item', 500, error);
   }
 };
