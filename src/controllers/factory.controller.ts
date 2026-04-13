@@ -56,12 +56,15 @@ export const createSalesOrder = async (req: Request, res: Response) => {
     const { vendor_id, branch_id, customer_name, items, payment_method, order_number, batch_number, expiry_date } = req.body;
     const admin_id = (req as any).user.admin_id;
 
-    const numItems = items.reduce((acc: number, item: any) => acc + Number(item.quantity * item.price), 0);
-    
-    // 🛡️ BRANCH SEGREGATION ORACLE (Persist specific branch delivery node)
+    let resolvedCustomerName = customer_name;
+    if (vendor_id && !resolvedCustomerName) {
+      const [vendor]: any = await connection.execute('SELECT name_en FROM vendors WHERE vendor_id = ?', [vendor_id]);
+      if (vendor.length > 0) resolvedCustomerName = vendor[0].name_en;
+    }
+
     const [orderRes]: any = await connection.execute(
       `INSERT INTO sales_orders (order_number, vendor_id, branch_id, customer_name, total_amount, payment_method, admin_id, batch_number, expiry_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [order_number || `SO-${Date.now()}`, vendor_id || null, branch_id === 'main' ? null : (branch_id || null), customer_name || 'Counter Customer', numItems, payment_method || 'cash', admin_id, batch_number || null, expiry_date || null]
+      [order_number || `SO-${Date.now()}`, vendor_id || null, branch_id === 'main' ? null : (branch_id || null), resolvedCustomerName || 'Counter Customer', numItems, payment_method || 'cash', admin_id, batch_number || null, expiry_date || null]
     );
     const sale_id = orderRes.insertId;
 
