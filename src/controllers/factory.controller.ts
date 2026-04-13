@@ -101,7 +101,8 @@ export const getDispatches = async (req: Request, res: Response) => {
   try {
     const [dispatches]: any = await pool.execute(`
       SELECT 
-        s.sale_id, s.order_number, s.total_amount, s.dispatch_status, s.created_at,
+        s.sale_id, s.order_number, s.customer_name, s.total_amount, 
+        s.discount_amount, s.final_amount, s.dispatch_status, s.created_at,
         v.name_en as client_name,
         pb.name_en as branch_name
       FROM sales_orders s
