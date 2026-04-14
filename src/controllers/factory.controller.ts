@@ -135,13 +135,13 @@ export const processReturn = async (req: Request, res: Response) => {
 
     for (const item of items) {
       await connection.execute(
-        'INSERT INTO sales_return_items (return_id, menu_item_id, quantity, unit_price, expiry_date) VALUES (?, ?, ?, ?, ?)',
-        [return_id, item.menu_item_id, item.quantity, item.unit_price, item.expiry_date]
+        'INSERT INTO sales_return_items (return_id, product_id, quantity, unit_price, expiry_date) VALUES (?, ?, ?, ?, ?)',
+        [return_id, item.menu_item_id || item.product_id, item.quantity, item.price || item.unit_price, item.expiry_date]
       );
 
       await connection.execute(
-        'INSERT INTO wastage (menu_item_id, return_id, quantity, reason_en, admin_id) VALUES (?, ?, ?, ?, ?)',
-        [item.menu_item_id, return_id, item.quantity, `Returned from Vendor: ${reason || 'Expired'}`, admin_id]
+        'INSERT INTO wastage (product_id, return_id, quantity, reason_en, admin_id) VALUES (?, ?, ?, ?, ?)',
+        [item.menu_item_id || item.product_id, return_id, item.quantity, `Returned from Vendor: ${reason || 'Expired'}`, admin_id]
       );
     }
 
