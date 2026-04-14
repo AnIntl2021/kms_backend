@@ -53,11 +53,11 @@ export const createSalesOrder = async (req: Request, res: Response) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    const { vendor_id, branch_id, customer_name, items, payment_method, order_number, batch_number, expiry_date } = req.body;
+    const { vendor_id, branch_id, customer_name, items, payment_method, order_number, batch_number, expiry_date, discount_percentage } = req.body;
     const admin_id = (req as any).user.admin_id;
 
     const totalAmount = items.reduce((acc: number, item: any) => acc + (Number(item.quantity) * Number(item.price)), 0);
-    const discountPercentage = vendor_id ? 25.00 : 0.00; // Auto-apply 25% for partners
+    const discountPercentage = discount_percentage !== undefined ? Number(discount_percentage) : (vendor_id ? 25.00 : 0.00); // Use provided discount or fallback to 25% for partners
     const discountAmount = (totalAmount * discountPercentage) / 100;
     const finalAmount = totalAmount - discountAmount;
 
@@ -101,8 +101,8 @@ export const getDispatches = async (req: Request, res: Response) => {
   try {
     const [dispatches]: any = await pool.execute(`
       SELECT 
-        s.sale_id, s.order_number, s.customer_name, s.total_amount, 
-        s.discount_amount, s.final_amount, s.dispatch_status, s.created_at,
+        s.sale_id, s.order_number, s.vendor_id, s.branch_id, s.customer_name, s.total_amount, 
+        s.discount_amount, s.final_amount, s.dispatch_status as status, s.batch_number, s.expiry_date, s.created_at,
         v.name_en as client_name,
         pb.name_en as branch_name
       FROM sales_orders s
@@ -152,5 +152,46 @@ export const processReturn = async (req: Request, res: Response) => {
     return errorResponse(res, error.message || 'Failed to process return');
   } finally {
     connection.release();
+  }
+};
+
+export const updateSalesOrder = async (req: Request, res: Response) => {
+  const { sale_id } = req.params;
+  const { customer_name, discount_percentage } = req.body;
+  
+  try {
+    const [order]: any = await pool.execute('SELECT total_amount, dispatch_status FROM sales_orders WHERE sale_id = ?', [sale_id]);
+    if (order.length === 0) return errorResponse(res, 'Order not found');
+    if (order[0].dispatch_status === 'delivered') return errorResponse(res, 'Order already delivered and is locked for security.');
+
+    const totalAmount = Number(order[0].total_amount);
+    const discP = Number(discount_percentage);
+    const discountAmount = (totalAmount * discP) / 100;
+    const finalAmount = totalAmount - discountAmount;
+
+    await pool.execute(
+      'UPDATE sales_orders SET customer_name = ?, discount_percentage = ?, discount_amount = ?, final_amount = ? WHERE sale_id = ?',
+      [customer_name, discP, discountAmount, finalAmount, sale_id]
+    );
+
+    return successResponse(res, null, 'Order details updated and accounting recalculated.');
+  } catch (error) {
+    return errorResponse(res, 'Failed to update order', 500, error);
+  }
+};
+
+export const getReturns = async (req: Request, res: Response) => {
+  try {
+    const [returns]: any = await pool.execute(`
+      SELECT 
+        r.return_id, r.sale_id, r.total_credit_amount, r.reason, r.created_at,
+        v.name_en as client_name
+      FROM sales_returns r
+      LEFT JOIN vendors v ON r.vendor_id = v.vendor_id
+      ORDER BY r.created_at DESC
+    `);
+    return successResponse(res, returns);
+  } catch (error) {
+    return errorResponse(res, 'Failed to fetch returns history', 500, error);
   }
 };
