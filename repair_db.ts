@@ -42,11 +42,13 @@ async function repairDB() {
         batch_number VARCHAR(100) UNIQUE,
         production_date DATE,
         expiry_date DATE,
+        branch_id INT NULL,
         admin_id INT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       ) ENGINE=InnoDB
     `);
     console.log('✅ table [production_logs] ready.');
+    await addColumnIfNotExist('production_logs', 'branch_id', 'INT NULL AFTER expiry_date');
 
     // 3. CREATE production_items
     await pool.execute(`
@@ -92,6 +94,35 @@ async function repairDB() {
     // 6. Repair purchase_orders (Missing date column)
     await addColumnIfNotExist('purchase_orders', 'date', 'DATE AFTER po_number');
     
+    // 7. CREATE sales_returns
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS sales_returns (
+        return_id INT AUTO_INCREMENT PRIMARY KEY,
+        sale_id INT NULL,
+        vendor_id INT,
+        branch_id INT NULL,
+        reason VARCHAR(255),
+        total_credit_amount DECIMAL(10,3) DEFAULT 0.000,
+        admin_id INT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB
+    `);
+    console.log('✅ table [sales_returns] ready with branch support.');
+
+    // 8. CREATE sales_return_items
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS sales_return_items (
+        return_item_id INT AUTO_INCREMENT PRIMARY KEY,
+        return_id INT,
+        product_id INT,
+        quantity DECIMAL(10,3) NOT NULL,
+        unit_price DECIMAL(10,3) NOT NULL,
+        expiry_date DATE NULL,
+        FOREIGN KEY (return_id) REFERENCES sales_returns(return_id) ON DELETE CASCADE
+      ) ENGINE=InnoDB
+    `);
+    console.log('✅ table [sales_return_items] ready.');
+
     console.log('✅ table [system_settings] ready.');
 
     // 7. Update Currency to Local Symbol

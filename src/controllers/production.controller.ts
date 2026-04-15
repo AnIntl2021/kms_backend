@@ -6,7 +6,7 @@ export const getProductionLogs = async (req: Request, res: Response) => {
   try {
     const [logs]: any = await pool.execute(`
       SELECT 
-        pl.production_id, pl.batch_number, pl.production_date, pl.expiry_date,
+        pl.production_id, pl.batch_number, pl.production_date, pl.expiry_date, pl.branch_id,
         COUNT(pi.menu_item_id) as total_items,
         SUM(pi.quantity_produced) as total_qty,
         GROUP_CONCAT(CONCAT(mi.name_en, ' (', pi.quantity_produced, ')') SEPARATOR ', ') as product_summary
@@ -26,13 +26,13 @@ export const recordBatchProduction = async (req: Request, res: Response) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    const { production_date, expiry_date, items } = req.body; 
+    const { production_date, expiry_date, items, branch_id, vendor_id } = req.body; 
     const batch_number = `B-PROD-${Date.now()}`;
 
-    // Fix parameter order: batch_number, production_date, expiry_date
+    // Fix parameter order: batch_number, production_date, expiry_date, branch_id
     const [result]: any = await connection.execute(
-      'INSERT INTO production_logs (batch_number, production_date, expiry_date) VALUES (?, ?, ?)',
-      [batch_number, production_date || new Date().toISOString().split('T')[0], expiry_date]
+      'INSERT INTO production_logs (batch_number, production_date, expiry_date, branch_id) VALUES (?, ?, ?, ?)',
+      [batch_number, production_date || new Date().toISOString().split('T')[0], expiry_date, branch_id || null]
     );
     const production_id = result.insertId;
 
@@ -49,13 +49,23 @@ export const recordBatchProduction = async (req: Request, res: Response) => {
         );
 
         const [ingredients]: any = await connection.execute(
-          'SELECT inventory_item_id, quantity FROM menu_item_ingredients WHERE menu_item_id = ?',
+          `SELECT 
+            mii.inventory_item_id, 
+            mii.quantity, 
+            IFNULL(iip.multiplier, 1) as multiplier 
+           FROM menu_item_ingredients mii
+           LEFT JOIN inventory_item_packages iip ON mii.package_id = iip.package_id
+           WHERE mii.menu_item_id = ?`,
           [item.menu_item_id]
         );
         for (const ing of ingredients) {
+          // If 1 Packet = 10 Pieces, then 1 Piece = (1/10) Packets.
+          // totalDeduction = (UsedQty / Multiplier) * BatchQty
+          const totalDeduction = (Number(ing.quantity) / Number(ing.multiplier)) * Number(item.quantity);
+          
           await connection.execute(
             'UPDATE inventory_items SET current_stock = current_stock - ? WHERE inventory_item_id = ?',
-            [ing.quantity * item.quantity, ing.inventory_item_id]
+            [totalDeduction, ing.inventory_item_id]
           );
         }
       }

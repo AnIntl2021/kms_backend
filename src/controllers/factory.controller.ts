@@ -121,15 +121,15 @@ export const processReturn = async (req: Request, res: Response) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    const { sale_id, vendor_id, items, reason } = req.body;
+    const { sale_id, vendor_id, branch_id, items, reason } = req.body;
     const admin_id = (req as any).user.admin_id;
 
     let total_credit = 0;
     items.forEach((i: any) => total_credit += (Number(i.quantity) * Number(i.unit_price)));
 
     const [returnRes]: any = await connection.execute(
-      'INSERT INTO sales_returns (sale_id, vendor_id, reason, total_credit_amount, admin_id) VALUES (?, ?, ?, ?, ?)',
-      [sale_id || null, vendor_id, reason || 'Expired', total_credit, admin_id]
+      'INSERT INTO sales_returns (sale_id, vendor_id, branch_id, reason, total_credit_amount, admin_id) VALUES (?, ?, ?, ?, ?, ?)',
+      [sale_id || null, vendor_id, branch_id === 'main' ? null : (branch_id || null), reason || 'Expired', total_credit, admin_id]
     );
     const return_id = returnRes.insertId;
 
@@ -185,9 +185,11 @@ export const getReturns = async (req: Request, res: Response) => {
     const [returns]: any = await pool.execute(`
       SELECT 
         r.return_id, r.sale_id, r.total_credit_amount, r.reason, r.created_at,
-        v.name_en as client_name
+        v.name_en as client_name,
+        pb.name_en as branch_name
       FROM sales_returns r
       LEFT JOIN vendors v ON r.vendor_id = v.vendor_id
+      LEFT JOIN partner_branches pb ON r.branch_id = pb.branch_id
       ORDER BY r.created_at DESC
     `);
     return successResponse(res, returns);
