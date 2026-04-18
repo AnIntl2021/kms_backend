@@ -35,6 +35,7 @@ async function repairDB() {
     // 1. Repair menu_items (Missing current_stock, type, and soft-delete)
     await addColumnIfNotExist('menu_items', 'current_stock', 'DECIMAL(10,2) DEFAULT 0 AFTER price');
     await addColumnIfNotExist('menu_items', 'type', "ENUM('selling', 'premix') DEFAULT 'selling' AFTER current_stock");
+    await addColumnIfNotExist('menu_items', 'barcode', "VARCHAR(100) NULL AFTER name_ar");
     await addColumnIfNotExist('menu_items', 'deleted_at', 'TIMESTAMP NULL AFTER image_url');
 
     // 2. Repair menu_item_ingredients (Missing package_id, sub-assembly support)

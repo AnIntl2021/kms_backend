@@ -47,7 +47,7 @@ export const createMenuItem = async (req: Request, res: Response) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    const { name_en, name_ar, category_id, price, cost_price, description_en, description_ar, type } = req.body;
+    const { name_en, name_ar, category_id, price, cost_price, description_en, description_ar, type, barcode } = req.body;
     let { ingredients } = req.body;
     
     // Support Multipart/FormData (ingredients arrive as JSON string)
@@ -63,11 +63,12 @@ export const createMenuItem = async (req: Request, res: Response) => {
 
     // 1. Create Menu Item
     const [result]: any = await connection.execute(
-      'INSERT INTO menu_items (category_id, name_en, name_ar, price, cost_price, type, description_en, description_ar, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO menu_items (category_id, name_en, name_ar, barcode, price, cost_price, type, description_en, description_ar, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         category_id || null, 
         name_en, 
         name_ar, 
+        barcode || null,
         Number(price || 0), 
         Number(cost_price || 0), 
         type || 'selling', 
@@ -121,7 +122,7 @@ export const updateMenuItem = async (req: Request, res: Response) => {
     const [existing]: any = await connection.execute('SELECT image_url FROM menu_items WHERE menu_item_id = ?', [id]);
     if (existing.length === 0) throw new Error('Item not found');
 
-    const { name_en, name_ar, category_id, price, cost_price, description_en, description_ar, status, type } = req.body;
+    const { name_en, name_ar, category_id, price, cost_price, description_en, description_ar, status, type, barcode } = req.body;
     let ingredients = req.body.ingredients;
     if (typeof ingredients === 'string') {
        try { ingredients = JSON.parse(ingredients); } catch(e) { ingredients = []; }
@@ -135,6 +136,7 @@ export const updateMenuItem = async (req: Request, res: Response) => {
         category_id = ?, 
         name_en = ?, 
         name_ar = ?, 
+        barcode = ?,
         price = ?, 
         cost_price = ?, 
         type = ?,
@@ -143,19 +145,29 @@ export const updateMenuItem = async (req: Request, res: Response) => {
         image_url = ?,
         status = ?
       WHERE menu_item_id = ?`,
-      [category_id, name_en, name_ar, price, cost_price || 0, type || 'selling', description_en || null, description_ar || null, image_url, status || 'available', id]
+      [category_id, name_en, name_ar, barcode || null, price, cost_price || 0, type || 'selling', description_en || null, description_ar || null, image_url, status || 'available', id]
     );
 
     // 3. Update Ingredients (Delete and Re-insert)
     await connection.execute('DELETE FROM menu_item_ingredients WHERE menu_item_id = ?', [id]);
     if (ingredients && Array.isArray(ingredients)) {
       for (const ing of ingredients) {
-        if (ing.inventory_item_id && ing.quantity) {
-          await connection.execute(
-            'INSERT INTO menu_item_ingredients (menu_item_id, inventory_item_id, package_id, quantity) VALUES (?, ?, ?, ?)',
-            [id, ing.inventory_item_id, ing.package_id || null, ing.quantity]
-          );
+        let invId = null;
+        let subMenuId = null;
+        
+        const rawId = String(ing.inventory_item_id || '');
+        if (rawId.startsWith('pre-')) {
+          subMenuId = rawId.replace('pre-', '');
+        } else {
+          invId = rawId.replace('inv-', '');
         }
+
+        if (!invId && !subMenuId) continue;
+
+        await connection.execute(
+          'INSERT INTO menu_item_ingredients (menu_item_id, inventory_item_id, sub_menu_item_id, package_id, quantity) VALUES (?, ?, ?, ?, ?)',
+          [id, invId, subMenuId, ing.package_id || null, ing.quantity]
+        );
       }
     }
 
