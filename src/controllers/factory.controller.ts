@@ -157,26 +157,80 @@ export const processReturn = async (req: Request, res: Response) => {
 
 export const updateSalesOrder = async (req: Request, res: Response) => {
   const { sale_id } = req.params;
-  const { customer_name, discount_percentage } = req.body;
-  
-  try {
-    const [order]: any = await pool.execute('SELECT total_amount, dispatch_status FROM sales_orders WHERE sale_id = ?', [sale_id]);
-    if (order.length === 0) return errorResponse(res, 'Order not found');
-    if (order[0].dispatch_status === 'delivered') return errorResponse(res, 'Order already delivered and is locked for security.');
+  const { vendor_id, branch_id, customer_name, items, batch_number, expiry_date, discount_percentage } = req.body;
+  const connection = await pool.getConnection();
 
-    const totalAmount = Number(order[0].total_amount);
-    const discP = Number(discount_percentage);
+  try {
+    await connection.beginTransaction();
+
+    // 1. Check if order exists and is not locked
+    const [existing]: any = await connection.execute('SELECT dispatch_status FROM sales_orders WHERE sale_id = ? FOR UPDATE', [sale_id]);
+    if (existing.length === 0) throw new Error('Order not found');
+    if (existing[0].dispatch_status === 'delivered') throw new Error('Order is already delivered and locked.');
+
+    // 2. Restore Old Stock
+    const [oldItems]: any = await connection.execute('SELECT menu_item_id, quantity FROM sales_order_items WHERE sale_id = ?', [sale_id]);
+    for (const item of oldItems) {
+      await connection.execute('UPDATE menu_items SET current_stock = current_stock + ? WHERE menu_item_id = ?', [item.quantity, item.menu_item_id]);
+    }
+
+    // 3. Wipe Old Items
+    await connection.execute('DELETE FROM sales_order_items WHERE sale_id = ?', [sale_id]);
+
+    // 4. Record New Data & Recalculate Totals
+    const totalAmount = items.reduce((acc: number, item: any) => acc + (Number(item.quantity) * Number(item.price)), 0);
+    const discP = Number(discount_percentage || 0);
     const discountAmount = (totalAmount * discP) / 100;
     const finalAmount = totalAmount - discountAmount;
 
-    await pool.execute(
-      'UPDATE sales_orders SET customer_name = ?, discount_percentage = ?, discount_amount = ?, final_amount = ? WHERE sale_id = ?',
-      [customer_name, discP, discountAmount, finalAmount, sale_id]
+    await connection.execute(
+      `UPDATE sales_orders SET 
+        vendor_id = ?, 
+        branch_id = ?, 
+        customer_name = ?, 
+        total_amount = ?, 
+        discount_percentage = ?, 
+        discount_amount = ?, 
+        final_amount = ?, 
+        batch_number = ?, 
+        expiry_date = ? 
+      WHERE sale_id = ?`,
+      [
+        vendor_id || null, 
+        branch_id === 'main' ? null : (branch_id || null), 
+        customer_name || 'Counter Customer', 
+        totalAmount, 
+        discP, 
+        discountAmount, 
+        finalAmount, 
+        batch_number || null, 
+        expiry_date || null, 
+        sale_id
+      ]
     );
 
-    return successResponse(res, null, 'Order details updated and accounting recalculated.');
-  } catch (error) {
-    return errorResponse(res, 'Failed to update order', 500, error);
+    // 5. Deduct New Stock & Insert Items
+    for (const item of items) {
+      const [menuItem]: any = await connection.execute('SELECT current_stock, name_en FROM menu_items WHERE menu_item_id = ? FOR UPDATE', [item.menu_item_id]);
+      if (menuItem[0].current_stock < item.quantity) {
+        throw new Error(`Insufficient stock for ${menuItem[0].name_en} during update.`);
+      }
+
+      await connection.execute(
+        `INSERT INTO sales_order_items (sale_id, menu_item_id, quantity, price, expiry_date, batch_number) VALUES (?, ?, ?, ?, ?, ?)`,
+        [sale_id, item.menu_item_id, item.quantity, item.price, expiry_date || null, batch_number || null]
+      );
+
+      await connection.execute('UPDATE menu_items SET current_stock = current_stock - ? WHERE menu_item_id = ?', [item.quantity, item.menu_item_id]);
+    }
+
+    await connection.commit();
+    return successResponse(res, null, 'Order fully updated and stock reconciled.');
+  } catch (error: any) {
+    await connection.rollback();
+    return errorResponse(res, error.message || 'Failed to update order', 500, error);
+  } finally {
+    connection.release();
   }
 };
 
@@ -195,5 +249,22 @@ export const getReturns = async (req: Request, res: Response) => {
     return successResponse(res, returns);
   } catch (error) {
     return errorResponse(res, 'Failed to fetch returns history', 500, error);
+  }
+};
+
+export const getOrderItems = async (req: Request, res: Response) => {
+  const { sale_id } = req.params;
+  try {
+    const [items]: any = await pool.execute(`
+      SELECT 
+        si.menu_item_id, si.quantity, si.price,
+        m.name_en, m.name_ar
+      FROM sales_order_items si
+      JOIN menu_items m ON si.menu_item_id = m.menu_item_id
+      WHERE si.sale_id = ?
+    `, [sale_id]);
+    return successResponse(res, items);
+  } catch (error) {
+    return errorResponse(res, 'Failed to fetch order items', 500, error);
   }
 };

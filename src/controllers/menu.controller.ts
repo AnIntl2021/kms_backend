@@ -26,9 +26,13 @@ export const getMenuItemDetails = async (req: Request, res: Response) => {
     if (items.length === 0) return errorResponse(res, 'Item not found', 404);
     
     const [ingredients] = await pool.execute(`
-      SELECT mii.*, ii.name_en, ii.unit_en 
+      SELECT 
+        mii.*, 
+        COALESCE(ii.name_en, smi.name_en) as name_en,
+        COALESCE(ii.unit_en, 'Batch') as unit_en 
       FROM menu_item_ingredients mii
-      JOIN inventory_items ii ON mii.inventory_item_id = ii.inventory_item_id
+      LEFT JOIN inventory_items ii ON mii.inventory_item_id = ii.inventory_item_id
+      LEFT JOIN menu_items smi ON mii.sub_menu_item_id = smi.menu_item_id
       WHERE mii.menu_item_id = ?
     `, [id]);
 
@@ -60,26 +64,48 @@ export const createMenuItem = async (req: Request, res: Response) => {
     // 1. Create Menu Item
     const [result]: any = await connection.execute(
       'INSERT INTO menu_items (category_id, name_en, name_ar, price, cost_price, type, description_en, description_ar, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [category_id, name_en, name_ar, price, cost_price || 0, type || 'selling', description_en || null, description_ar || null, image_url]
+      [
+        category_id || null, 
+        name_en, 
+        name_ar, 
+        Number(price || 0), 
+        Number(cost_price || 0), 
+        type || 'selling', 
+        description_en || null, 
+        description_ar || null, 
+        image_url
+      ]
     );
     const menu_item_id = result.insertId;
 
     // 2. Add Ingredients (Recipe)
     if (ingredients && Array.isArray(ingredients)) {
       for (const ing of ingredients) {
+        let invId = null;
+        let subMenuId = null;
+        
+        const rawId = String(ing.inventory_item_id || '');
+        if (rawId.startsWith('pre-')) {
+          subMenuId = rawId.replace('pre-', '');
+        } else {
+          invId = rawId.replace('inv-', '');
+        }
+
+        if (!invId && !subMenuId) continue;
+
         await connection.execute(
-          'INSERT INTO menu_item_ingredients (menu_item_id, inventory_item_id, package_id, quantity) VALUES (?, ?, ?, ?)',
-          [menu_item_id, ing.inventory_item_id, ing.package_id || null, ing.quantity]
+          'INSERT INTO menu_item_ingredients (menu_item_id, inventory_item_id, sub_menu_item_id, package_id, quantity) VALUES (?, ?, ?, ?, ?)',
+          [menu_item_id, invId, subMenuId, ing.package_id || null, ing.quantity]
         );
       }
     }
 
     await connection.commit();
-    return successResponse(res, { menu_item_id }, 'Menu item created with recipe', 201);
-  } catch (error) {
+    return successResponse(res, { menu_item_id }, 'Menu item created with recipe successfully!', 201);
+  } catch (error: any) {
     await connection.rollback();
-    console.error('createMenuItem Error:', error);
-    return errorResponse(res, 'Failed to create menu item', 500, error);
+    console.error('⛔ createMenuItem FAILURE:', error.message);
+    return errorResponse(res, `Database Error: ${error.message}`, 500, error);
   } finally {
     connection.release();
   }

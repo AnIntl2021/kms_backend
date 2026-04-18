@@ -50,14 +50,19 @@ export const createSale = async (req: any, res: Response) => {
 
     await connection.beginTransaction();
 
-    const order_number = 'ORD-' + Date.now();
-
     const [orderRes]: any = await connection.execute(
       'INSERT INTO sales_orders (order_number, customer_name, total_amount, payment_status, dispatch_status, admin_id) VALUES (?, ?, ?, ?, ?, ?)',
-      [order_number, customer_name, total_amount, payment_status || 'paid', dispatch_status || 'pending', admin_id]
+      ['PENDING', customer_name, total_amount, payment_status || 'paid', dispatch_status || 'pending', admin_id]
     );
 
     const sale_id = orderRes.insertId;
+    const order_number = `FNFI-${100000 + sale_id}`;
+
+    // Update the record with the professional order number
+    await connection.execute(
+      'UPDATE sales_orders SET order_number = ? WHERE sale_id = ?',
+      [order_number, sale_id]
+    );
 
     for (const item of items) {
       await connection.execute(
@@ -140,10 +145,17 @@ export const updateSaleStatus = async (req: Request, res: Response) => {
     const { id } = req.params;
     const { dispatch_status } = req.body;
 
-    await pool.execute(
-      'UPDATE sales_orders SET dispatch_status = ? WHERE sale_id = ?',
-      [dispatch_status, id]
-    );
+    // 📢 NOTIFICATION TRIGGER
+    const [order]: any = await pool.execute('SELECT order_number, customer_name FROM sales_orders WHERE sale_id = ?', [id]);
+    if (order.length > 0) {
+      const msg = `⚡ Order ${order[0].order_number} (${order[0].customer_name}) status updated to: ${dispatch_status.toUpperCase()}`;
+      const type = dispatch_status === 'delivered' ? 'success' : (dispatch_status === 'dispatched' ? 'info' : 'warning');
+      
+      await pool.execute(
+        'INSERT INTO notifications (message, type) VALUES (?, ?)',
+        [msg, type]
+      );
+    }
 
     return successResponse(res, null, 'Status updated');
   } catch (error) {

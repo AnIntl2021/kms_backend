@@ -188,6 +188,9 @@ export const adjustStock = async (req: any, res: Response) => {
       [newStock, id]
     );
 
+    // 🔔 REAL-TIME STOCK AUDIT
+    import('../utils/notifications.js').then(m => m.checkAndNotifyLowStock(Number(id)));
+
     await logAudit(req.user.admin_id, 'STOCK_ADJUSTMENT', 'inventory_items', parseInt(id), { old_stock: currentStock }, { new_stock: newStock, type: adjustment_type, reason }, req);
 
     return successResponse(res, { new_stock: newStock }, 'Stock adjusted successfully');

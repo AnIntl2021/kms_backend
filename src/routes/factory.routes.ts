@@ -4,7 +4,8 @@ import {
   processReturn, 
   getDispatches,
   updateSalesOrder,
-  getReturns
+  getReturns,
+  getOrderItems
 } from '../controllers/factory.controller';
 import { recordBatchProduction, getProductionLogs } from '../controllers/production.controller';
 import { updateDispatchStatus } from '../controllers/dispatch.controller';
@@ -21,4 +22,5 @@ router.post('/sales', authMiddleware, authorize(['super_admin', 'manager', 'sale
 router.put('/sales/:sale_id', authMiddleware, authorize(['super_admin', 'manager', 'sales_dispatch']), updateSalesOrder);
 router.post('/returns', authMiddleware, authorize(['super_admin', 'manager', 'sales_dispatch']), processReturn);
 
+router.get('/sales/:sale_id/items', authMiddleware, getOrderItems);
 export default router;

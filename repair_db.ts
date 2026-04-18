@@ -32,8 +32,20 @@ async function repairDB() {
         }
     };
 
-    // 1. Repair menu_items (Missing current_stock)
+    // 1. Repair menu_items (Missing current_stock, type, and soft-delete)
     await addColumnIfNotExist('menu_items', 'current_stock', 'DECIMAL(10,2) DEFAULT 0 AFTER price');
+    await addColumnIfNotExist('menu_items', 'type', "ENUM('selling', 'premix') DEFAULT 'selling' AFTER current_stock");
+    await addColumnIfNotExist('menu_items', 'deleted_at', 'TIMESTAMP NULL AFTER image_url');
+
+    // 2. Repair menu_item_ingredients (Missing package_id, sub-assembly support)
+    await addColumnIfNotExist('menu_item_ingredients', 'package_id', 'VARCHAR(100) NULL AFTER inventory_item_id');
+    await addColumnIfNotExist('menu_item_ingredients', 'sub_menu_item_id', 'INT NULL AFTER package_id');
+    try {
+        await pool.execute('ALTER TABLE menu_item_ingredients MODIFY COLUMN inventory_item_id INT NULL');
+        await pool.execute('ALTER TABLE menu_item_ingredients MODIFY COLUMN package_id VARCHAR(100) NULL');
+    } catch (e) {
+        console.log('Skipping modify columns if already compatible.');
+    }
 
     // 2. CREATE production_logs
     await pool.execute(`
@@ -122,6 +134,19 @@ async function repairDB() {
       ) ENGINE=InnoDB
     `);
     console.log('✅ table [sales_return_items] ready.');
+
+    // 9. CREATE notifications
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        notification_id INT AUTO_INCREMENT PRIMARY KEY,
+        message TEXT NOT NULL,
+        type ENUM('info', 'warning', 'success', 'danger') DEFAULT 'info',
+        is_read BOOLEAN DEFAULT FALSE,
+        admin_id INT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB
+    `);
+    console.log('✅ table [notifications] ready.');
 
     console.log('✅ table [system_settings] ready.');
 
