@@ -68,8 +68,8 @@ export const createSalesOrder = async (req: Request, res: Response) => {
     }
 
     const [orderRes]: any = await connection.execute(
-      `INSERT INTO sales_orders (order_number, vendor_id, branch_id, customer_name, total_amount, discount_percentage, discount_amount, final_amount, payment_method, admin_id, batch_number, expiry_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [order_number || `SO-${Date.now()}`, vendor_id || null, branch_id === 'main' ? null : (branch_id || null), resolvedCustomerName || 'Counter Customer', totalAmount, discountPercentage, discountAmount, finalAmount, payment_method || 'cash', admin_id, batch_number || null, expiry_date || null]
+      `INSERT INTO sales_orders (order_number, vendor_id, branch_id, customer_name, total_amount, discount_percentage, discount_amount, final_amount, payment_method, admin_id, batch_number, expiry_date, dispatch_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [order_number || `SO-${Date.now()}`, vendor_id || null, branch_id === 'main' ? null : (branch_id || null), resolvedCustomerName || 'Counter Customer', totalAmount, discountPercentage, discountAmount, finalAmount, payment_method || 'cash', admin_id, batch_number || null, expiry_date || null, 'pending']
     );
     const sale_id = orderRes.insertId;
 
@@ -102,7 +102,7 @@ export const getDispatches = async (req: Request, res: Response) => {
     const [dispatches]: any = await pool.execute(`
       SELECT 
         s.sale_id, s.order_number, s.vendor_id, s.branch_id, s.customer_name, s.total_amount, 
-        s.discount_amount, s.final_amount, s.dispatch_status as status, s.batch_number, s.expiry_date, s.created_at,
+        s.discount_amount, s.final_amount, s.dispatch_status, s.batch_number, s.expiry_date, s.created_at,
         v.name_en as client_name,
         pb.name_en as branch_name
       FROM sales_orders s
@@ -135,12 +135,12 @@ export const processReturn = async (req: Request, res: Response) => {
 
     for (const item of items) {
       await connection.execute(
-        'INSERT INTO sales_return_items (return_id, product_id, quantity, unit_price, expiry_date) VALUES (?, ?, ?, ?, ?)',
+        'INSERT INTO sales_return_items (return_id, menu_item_id, quantity, unit_price, expiry_date) VALUES (?, ?, ?, ?, ?)',
         [return_id, item.menu_item_id || item.product_id, item.quantity, item.price || item.unit_price, item.expiry_date]
       );
 
       await connection.execute(
-        'INSERT INTO wastage (product_id, return_id, quantity, reason_en, admin_id) VALUES (?, ?, ?, ?, ?)',
+        'INSERT INTO wastage (menu_item_id, return_id, quantity, reason_en, admin_id) VALUES (?, ?, ?, ?, ?)',
         [item.menu_item_id || item.product_id, return_id, item.quantity, `Returned from Vendor: ${reason || 'Expired'}`, admin_id]
       );
     }
@@ -193,7 +193,8 @@ export const updateSalesOrder = async (req: Request, res: Response) => {
         discount_amount = ?, 
         final_amount = ?, 
         batch_number = ?, 
-        expiry_date = ? 
+        expiry_date = ?,
+        dispatch_status = ?
       WHERE sale_id = ?`,
       [
         vendor_id || null, 
@@ -205,6 +206,7 @@ export const updateSalesOrder = async (req: Request, res: Response) => {
         finalAmount, 
         batch_number || null, 
         expiry_date || null, 
+        status || 'pending',
         sale_id
       ]
     );

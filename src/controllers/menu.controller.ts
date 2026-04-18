@@ -47,7 +47,7 @@ export const createMenuItem = async (req: Request, res: Response) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    const { name_en, name_ar, category_id, price, cost_price, description_en, description_ar, type, barcode } = req.body;
+    const { name_en, name_ar, category_id, price, cost_price, description_en, description_ar, type, barcode, unit_en, unit_ar } = req.body;
     let { ingredients } = req.body;
     
     // Support Multipart/FormData (ingredients arrive as JSON string)
@@ -63,13 +63,15 @@ export const createMenuItem = async (req: Request, res: Response) => {
 
     // 1. Create Menu Item
     const [result]: any = await connection.execute(
-      'INSERT INTO menu_items (category_id, name_en, name_ar, barcode, price, cost_price, type, description_en, description_ar, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO menu_items (category_id, name_en, name_ar, barcode, price, unit_en, unit_ar, cost_price, type, description_en, description_ar, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         category_id || null, 
         name_en, 
         name_ar, 
         barcode || null,
         Number(price || 0), 
+        unit_en || 'piece',
+        unit_ar || 'حبة',
         Number(cost_price || 0), 
         type || 'selling', 
         description_en || null, 
@@ -122,7 +124,7 @@ export const updateMenuItem = async (req: Request, res: Response) => {
     const [existing]: any = await connection.execute('SELECT image_url FROM menu_items WHERE menu_item_id = ?', [id]);
     if (existing.length === 0) throw new Error('Item not found');
 
-    const { name_en, name_ar, category_id, price, cost_price, description_en, description_ar, status, type, barcode } = req.body;
+    const { name_en, name_ar, category_id, price, unit_en, unit_ar, cost_price, description_en, description_ar, status, type, barcode } = req.body;
     let ingredients = req.body.ingredients;
     if (typeof ingredients === 'string') {
        try { ingredients = JSON.parse(ingredients); } catch(e) { ingredients = []; }
@@ -138,6 +140,8 @@ export const updateMenuItem = async (req: Request, res: Response) => {
         name_ar = ?, 
         barcode = ?,
         price = ?, 
+        unit_en = ?,
+        unit_ar = ?,
         cost_price = ?, 
         type = ?,
         description_en = ?, 
@@ -145,7 +149,7 @@ export const updateMenuItem = async (req: Request, res: Response) => {
         image_url = ?,
         status = ?
       WHERE menu_item_id = ?`,
-      [category_id, name_en, name_ar, barcode || null, price, cost_price || 0, type || 'selling', description_en || null, description_ar || null, image_url, status || 'available', id]
+      [category_id, name_en, name_ar, barcode || null, price, unit_en || 'piece', unit_ar || 'حبة', cost_price || 0, type || 'selling', description_en || null, description_ar || null, image_url, status || 'available', id]
     );
 
     // 3. Update Ingredients (Delete and Re-insert)

@@ -7,8 +7,10 @@ export const getSales = async (req: Request, res: Response) => {
     const [rows]: any = await pool.execute(`
       SELECT s.*, 
       (SELECT COUNT(*) FROM sales_order_items WHERE sale_id = s.sale_id) as items_count,
-      DATE_FORMAT(s.created_at, '%Y-%m-%d %H:%i') as order_date
+      DATE_FORMAT(s.created_at, '%Y-%m-%d %H:%i') as order_date,
+      b.name_en as branch_name
       FROM sales_orders s 
+      LEFT JOIN branches b ON s.branch_id = b.branch_id
       ORDER BY s.created_at DESC
     `);
     return successResponse(res, rows);
@@ -45,14 +47,14 @@ export const getSaleById = async (req: Request, res: Response) => {
 export const createSale = async (req: any, res: Response) => {
   const connection = await pool.getConnection();
   try {
-    const { customer_name, items, total_amount, payment_status, dispatch_status } = req.body;
+    const { vendor_id, branch_id, customer_name, items, total_amount, payment_status, dispatch_status, batch_number, expiry_date } = req.body;
     const admin_id = req.user?.admin_id || 1;
 
     await connection.beginTransaction();
 
     const [orderRes]: any = await connection.execute(
-      'INSERT INTO sales_orders (order_number, customer_name, total_amount, payment_status, dispatch_status, admin_id) VALUES (?, ?, ?, ?, ?, ?)',
-      ['PENDING', customer_name, total_amount, payment_status || 'paid', dispatch_status || 'pending', admin_id]
+      'INSERT INTO sales_orders (order_number, vendor_id, branch_id, customer_name, total_amount, payment_status, dispatch_status, batch_number, expiry_date, admin_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      ['PENDING', vendor_id || null, (branch_id === 'main' ? null : branch_id) || null, customer_name, total_amount, payment_status || 'paid', dispatch_status || 'pending', batch_number || null, expiry_date || null, admin_id]
     );
 
     const sale_id = orderRes.insertId;
@@ -147,6 +149,13 @@ export const updateSaleStatus = async (req: Request, res: Response) => {
 
     // 📢 NOTIFICATION TRIGGER
     const [order]: any = await pool.execute('SELECT order_number, customer_name FROM sales_orders WHERE sale_id = ?', [id]);
+    
+    // 🛡️ ACTUAL DATABASE UPDATE (THE MISSING LINK)
+    await pool.execute(
+      'UPDATE sales_orders SET dispatch_status = ? WHERE sale_id = ?',
+      [dispatch_status, id]
+    );
+
     if (order.length > 0) {
       const msg = `⚡ Order ${order[0].order_number} (${order[0].customer_name}) status updated to: ${dispatch_status.toUpperCase()}`;
       const type = dispatch_status === 'delivered' ? 'success' : (dispatch_status === 'dispatched' ? 'info' : 'warning');
@@ -157,7 +166,7 @@ export const updateSaleStatus = async (req: Request, res: Response) => {
       );
     }
 
-    return successResponse(res, null, 'Status updated');
+    return successResponse(res, null, 'Status updated successfully');
   } catch (error) {
     return errorResponse(res, 'Update failed', 500, error);
   }

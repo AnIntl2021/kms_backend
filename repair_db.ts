@@ -78,6 +78,8 @@ async function repairDB() {
     // 4. Ensuring Batch Tracking columns in sales_orders
     await addColumnIfNotExist('sales_orders', 'batch_number', 'VARCHAR(100) AFTER admin_id');
     await addColumnIfNotExist('sales_orders', 'expiry_date', 'DATE AFTER batch_number');
+    await addColumnIfNotExist('sales_orders', 'dispatch_status', "ENUM('pending', 'dispatched', 'in_transit', 'delivered', 'returned') DEFAULT 'pending' AFTER expiry_date");
+    await addColumnIfNotExist('sales_orders', 'branch_id', "INT NULL AFTER vendor_id");
 
     // 5. CREATE system_settings
     await pool.execute(`
