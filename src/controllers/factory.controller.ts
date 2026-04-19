@@ -159,7 +159,7 @@ export const processReturn = async (req: Request, res: Response) => {
 
 export const updateSalesOrder = async (req: Request, res: Response) => {
   const { sale_id } = req.params;
-  const { vendor_id, branch_id, customer_name, items, batch_number, expiry_date, discount_percentage } = req.body;
+  const { vendor_id, branch_id, customer_name, items, batch_number, expiry_date, discount_percentage, dispatch_status } = req.body;
   const connection = await pool.getConnection();
 
   try {
@@ -208,7 +208,7 @@ export const updateSalesOrder = async (req: Request, res: Response) => {
         finalAmount, 
         batch_number || null, 
         expiry_date || null, 
-        status || 'pending',
+        dispatch_status || existing[0].dispatch_status || 'pending',
         sale_id
       ]
     );
