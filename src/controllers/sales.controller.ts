@@ -23,7 +23,9 @@ export const getSaleById = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const [orders]: any = await pool.execute(`
-      SELECT s.*, DATE_FORMAT(s.created_at, '%Y-%m-%d %H:%i') as order_date
+      SELECT s.*, 
+             DATE_FORMAT(s.created_at, '%Y-%m-%d') as order_date,
+             DATE_FORMAT(s.created_at, '%Y-%m-%d') as dispatch_date
       FROM sales_orders s 
       WHERE s.sale_id = ?
     `, [id]);
