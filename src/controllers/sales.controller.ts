@@ -7,7 +7,7 @@ export const getSales = async (req: Request, res: Response) => {
     const [rows]: any = await pool.execute(`
       SELECT s.*, 
       (SELECT COUNT(*) FROM sales_order_items WHERE sale_id = s.sale_id) as items_count,
-      DATE_FORMAT(s.created_at, '%Y-%m-%d %H:%i') as order_date,
+      DATE_FORMAT(s.created_at, '%Y-%m-%d') as dispatch_date,
       b.name_en as branch_name
       FROM sales_orders s 
       LEFT JOIN branches b ON s.branch_id = b.branch_id
@@ -47,14 +47,14 @@ export const getSaleById = async (req: Request, res: Response) => {
 export const createSale = async (req: any, res: Response) => {
   const connection = await pool.getConnection();
   try {
-    const { vendor_id, branch_id, customer_name, items, total_amount, payment_status, dispatch_status, batch_number, expiry_date } = req.body;
+    const { vendor_id, branch_id, customer_name, items, total_amount, payment_status, dispatch_status, batch_number, expiry_date, dispatch_date } = req.body;
     const admin_id = req.user?.admin_id || 1;
 
     await connection.beginTransaction();
 
     const [orderRes]: any = await connection.execute(
-      'INSERT INTO sales_orders (order_number, vendor_id, branch_id, customer_name, total_amount, payment_status, dispatch_status, batch_number, expiry_date, admin_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      ['PENDING', vendor_id || null, (branch_id === 'main' ? null : branch_id) || null, customer_name, total_amount, payment_status || 'paid', dispatch_status || 'pending', batch_number || null, expiry_date || null, admin_id]
+      'INSERT INTO sales_orders (order_number, vendor_id, branch_id, customer_name, total_amount, payment_status, dispatch_status, batch_number, expiry_date, admin_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      ['PENDING', vendor_id || null, (branch_id === 'main' ? null : branch_id) || null, customer_name, total_amount, payment_status || 'paid', dispatch_status || 'pending', batch_number || null, expiry_date || null, admin_id, dispatch_date || new Date()]
     );
 
     const sale_id = orderRes.insertId;

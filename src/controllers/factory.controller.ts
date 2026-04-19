@@ -53,7 +53,7 @@ export const createSalesOrder = async (req: Request, res: Response) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    const { vendor_id, branch_id, customer_name, items, payment_method, order_number, batch_number, expiry_date, discount_percentage } = req.body;
+    const { vendor_id, branch_id, customer_name, items, payment_method, order_number, batch_number, expiry_date, discount_percentage, dispatch_date } = req.body;
     const admin_id = (req as any).user.admin_id;
 
     const totalAmount = items.reduce((acc: number, item: any) => acc + (Number(item.quantity) * Number(item.price)), 0);
@@ -68,8 +68,8 @@ export const createSalesOrder = async (req: Request, res: Response) => {
     }
 
     const [orderRes]: any = await connection.execute(
-      `INSERT INTO sales_orders (order_number, vendor_id, branch_id, customer_name, total_amount, discount_percentage, discount_amount, final_amount, payment_method, admin_id, batch_number, expiry_date, dispatch_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [order_number || `SO-${Date.now()}`, vendor_id || null, branch_id === 'main' ? null : (branch_id || null), resolvedCustomerName || 'Counter Customer', totalAmount, discountPercentage, discountAmount, finalAmount, payment_method || 'cash', admin_id, batch_number || null, expiry_date || null, 'pending']
+      `INSERT INTO sales_orders (order_number, vendor_id, branch_id, customer_name, total_amount, discount_percentage, discount_amount, final_amount, payment_method, admin_id, batch_number, expiry_date, dispatch_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [order_number || `SO-${Date.now()}`, vendor_id || null, branch_id === 'main' ? null : (branch_id || null), resolvedCustomerName || 'Counter Customer', totalAmount, discountPercentage, discountAmount, finalAmount, payment_method || 'cash', admin_id, batch_number || null, expiry_date || null, 'pending', dispatch_date || new Date()]
     );
     const sale_id = orderRes.insertId;
 
@@ -102,7 +102,9 @@ export const getDispatches = async (req: Request, res: Response) => {
     const [dispatches]: any = await pool.execute(`
       SELECT 
         s.sale_id, s.order_number, s.vendor_id, s.branch_id, s.customer_name, s.total_amount, 
-        s.discount_amount, s.final_amount, s.dispatch_status, s.batch_number, s.expiry_date, s.created_at,
+        s.discount_amount, s.final_amount, s.dispatch_status, s.batch_number, s.expiry_date, 
+        DATE_FORMAT(s.created_at, '%Y-%m-%d') as dispatch_date,
+        s.created_at,
         v.name_en as client_name,
         pb.name_en as branch_name
       FROM sales_orders s
