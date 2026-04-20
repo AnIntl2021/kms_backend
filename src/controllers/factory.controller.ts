@@ -141,7 +141,7 @@ export const processReturn = async (req: Request, res: Response) => {
     for (const item of items) {
       await connection.execute(
         'INSERT INTO sales_return_items (return_id, menu_item_id, quantity, unit_price, expiry_date) VALUES (?, ?, ?, ?, ?)',
-        [return_id, item.menu_item_id || item.product_id, item.quantity, item.price || item.unit_price, item.expiry_date]
+        [return_id, item.menu_item_id || item.product_id, item.quantity, item.price || item.unit_price, item.expiry_date ? String(item.expiry_date).split('T')[0] : null]
       );
 
       await connection.execute(
@@ -162,7 +162,7 @@ export const processReturn = async (req: Request, res: Response) => {
 
 export const updateSalesOrder = async (req: Request, res: Response) => {
   const { sale_id } = req.params;
-  const { vendor_id, branch_id, customer_name, items, batch_number, expiry_date, discount_percentage, dispatch_status } = req.body;
+  const { vendor_id, branch_id, customer_name, items, batch_number, expiry_date, discount_percentage, dispatch_status, dispatch_date } = req.body;
   const connection = await pool.getConnection();
 
   try {
@@ -188,6 +188,9 @@ export const updateSalesOrder = async (req: Request, res: Response) => {
     const discountAmount = (totalAmount * discP) / 100;
     const finalAmount = totalAmount - discountAmount;
 
+    const sanitizedExp = expiry_date ? String(expiry_date).split('T')[0] : null;
+    const sanitizedDisp = dispatch_date ? String(dispatch_date).split('T')[0] : null;
+
     await connection.execute(
       `UPDATE sales_orders SET 
         vendor_id = ?, 
@@ -199,7 +202,7 @@ export const updateSalesOrder = async (req: Request, res: Response) => {
         final_amount = ?, 
         batch_number = ?, 
         expiry_date = ?,
-        dispatch_status = ?
+        dispatch_status = ?${sanitizedDisp ? ', created_at = ?' : ''}
       WHERE sale_id = ?`,
       [
         vendor_id || null, 
@@ -210,8 +213,9 @@ export const updateSalesOrder = async (req: Request, res: Response) => {
         discountAmount, 
         finalAmount, 
         batch_number || null, 
-        expiry_date || null, 
+        sanitizedExp, 
         dispatch_status || existing[0].dispatch_status || 'pending',
+        ...(sanitizedDisp ? [sanitizedDisp] : []),
         sale_id
       ]
     );
@@ -225,7 +229,7 @@ export const updateSalesOrder = async (req: Request, res: Response) => {
 
       await connection.execute(
         `INSERT INTO sales_order_items (sale_id, menu_item_id, quantity, price, expiry_date, batch_number) VALUES (?, ?, ?, ?, ?, ?)`,
-        [sale_id, item.menu_item_id, item.quantity, item.price, expiry_date || null, batch_number || null]
+        [sale_id, item.menu_item_id, item.quantity, item.price, sanitizedExp, batch_number || null]
       );
 
       await connection.execute('UPDATE menu_items SET current_stock = current_stock - ? WHERE menu_item_id = ?', [item.quantity, item.menu_item_id]);
