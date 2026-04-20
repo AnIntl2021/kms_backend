@@ -69,7 +69,7 @@ export const createSalesOrder = async (req: Request, res: Response) => {
 
     const [orderRes]: any = await connection.execute(
       `INSERT INTO sales_orders (order_number, vendor_id, branch_id, customer_name, total_amount, discount_percentage, discount_amount, final_amount, payment_method, admin_id, batch_number, expiry_date, dispatch_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [order_number || `SO-${Date.now()}`, vendor_id || null, branch_id === 'main' ? null : (branch_id || null), resolvedCustomerName || 'Counter Customer', totalAmount, discountPercentage, discountAmount, finalAmount, payment_method || 'cash', admin_id, batch_number || null, expiry_date || null, 'pending', dispatch_date || new Date()]
+      [order_number || `SO-${Date.now()}`, vendor_id || null, branch_id && String(branch_id).trim().toLowerCase() === 'main' ? null : (branch_id || null), resolvedCustomerName || 'Counter Customer', totalAmount, discountPercentage, discountAmount, finalAmount, payment_method || 'cash', admin_id, batch_number || null, expiry_date || null, 'pending', dispatch_date || new Date()]
     );
     const sale_id = orderRes.insertId;
 
@@ -131,7 +131,7 @@ export const processReturn = async (req: Request, res: Response) => {
 
     const [returnRes]: any = await connection.execute(
       'INSERT INTO sales_returns (sale_id, vendor_id, branch_id, reason, total_credit_amount, admin_id) VALUES (?, ?, ?, ?, ?, ?)',
-      [sale_id || null, vendor_id, branch_id === 'main' ? null : (branch_id || null), reason || 'Expired', total_credit, admin_id]
+      [sale_id || null, vendor_id, branch_id && String(branch_id).trim().toLowerCase() === 'main' ? null : (branch_id || null), reason || 'Expired', total_credit, admin_id]
     );
     const return_id = returnRes.insertId;
 
@@ -200,7 +200,7 @@ export const updateSalesOrder = async (req: Request, res: Response) => {
       WHERE sale_id = ?`,
       [
         vendor_id || null, 
-        branch_id === 'main' ? null : (branch_id || null), 
+        branch_id && String(branch_id).trim().toLowerCase() === 'main' ? null : (branch_id || null), 
         customer_name || 'Counter Customer', 
         totalAmount, 
         discP, 

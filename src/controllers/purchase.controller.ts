@@ -74,7 +74,7 @@ export const createPurchaseOrder = async (req: Request, res: Response) => {
       [
         vendor_id, 
         admin_id, 
-        branch_id === 'main' ? null : (branch_id || null), 
+        branch_id && String(branch_id).trim().toLowerCase() === 'main' ? null : (branch_id || null), 
         po_number || `PO-${Date.now()}`, 
         date || new Date().toISOString().split('T')[0],
         invoice_type || 'tax_invoice',
@@ -251,7 +251,7 @@ export const updatePurchaseOrder = async (req: Request, res: Response) => {
       WHERE purchase_id = ?`,
       [
         vendor_id, 
-        branch_id === 'main' ? null : (branch_id || null),
+        branch_id && String(branch_id).trim().toLowerCase() === 'main' ? null : (branch_id || null),
         invoice_type || 'tax_invoice',
         total_amount, 
         tax_amount || 0,
