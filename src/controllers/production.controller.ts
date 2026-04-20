@@ -6,7 +6,10 @@ export const getProductionLogs = async (req: Request, res: Response) => {
   try {
     const [logs]: any = await pool.execute(`
       SELECT 
-        pl.production_id, pl.batch_number, pl.production_date, pl.expiry_date, pl.branch_id,
+        pl.production_id, pl.batch_number, 
+        DATE_FORMAT(pl.production_date, '%Y-%m-%d') as production_date, 
+        DATE_FORMAT(pl.expiry_date, '%Y-%m-%d') as expiry_date, 
+        pl.branch_id,
         COUNT(pi.menu_item_id) as total_items,
         SUM(pi.quantity_produced) as total_qty,
         GROUP_CONCAT(CONCAT(mi.name_en, ' (', pi.quantity_produced, ')') SEPARATOR ', ') as product_summary
