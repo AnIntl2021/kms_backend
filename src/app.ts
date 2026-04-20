@@ -81,6 +81,16 @@ const initDistributionEngine = async () => {
             if (err.errno !== 1061) console.error("Purchase Order Constraint Sync:", err.message);
         }
 
+        // 🛡️ SOFT DELETE ENGINE SYNC
+        const tablesToSync = ['production_logs', 'sales_orders', 'sales_returns'];
+        for (const table of tablesToSync) {
+            try {
+                await pool.execute(`ALTER TABLE ${table} ADD COLUMN deleted_at TIMESTAMP NULL DEFAULT NULL`);
+            } catch (err: any) {
+                if (err.errno !== 1060) console.error(`Soft Delete Sync (${table}):`, err.message);
+            }
+        }
+
         console.log("🚚 Distribution Branch Hub: INITIALIZED & READY. 🛡️🚀");
     } catch (err) {
         console.error("⛔ Distribution Initialization Barrier:", err);
