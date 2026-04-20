@@ -14,7 +14,7 @@ export const getProductionLogs = async (req: Request, res: Response) => {
       LEFT JOIN production_items pi ON pl.production_id = pi.production_id
       LEFT JOIN menu_items mi ON pi.menu_item_id = mi.menu_item_id
       GROUP BY pl.production_id
-      ORDER BY pl.production_date DESC
+      ORDER BY pl.production_date DESC, pl.production_id DESC
     `);
     return successResponse(res, logs);
   } catch (error) {
