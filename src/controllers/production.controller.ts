@@ -32,7 +32,7 @@ export const recordBatchProduction = async (req: Request, res: Response) => {
     // Fix parameter order: batch_number, production_date, expiry_date, branch_id
     const [result]: any = await connection.execute(
       'INSERT INTO production_logs (batch_number, production_date, expiry_date, branch_id) VALUES (?, ?, ?, ?)',
-      [batch_number, production_date || new Date().toISOString().split('T')[0], expiry_date, branch_id || null]
+      [batch_number, production_date || new Date().toISOString().split('T')[0], expiry_date, branch_id && String(branch_id).trim().toLowerCase() === 'main' ? null : (branch_id || null)]
     );
     const production_id = result.insertId;
 
