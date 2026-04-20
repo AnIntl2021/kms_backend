@@ -67,9 +67,12 @@ export const createSalesOrder = async (req: Request, res: Response) => {
       if (vendor.length > 0) resolvedCustomerName = vendor[0].name_en;
     }
 
+    const sanitizedDispatchDate = dispatch_date ? String(dispatch_date).split('T')[0] : new Date().toISOString().split('T')[0];
+    const sanitizedExpiryDate = expiry_date ? String(expiry_date).split('T')[0] : null;
+
     const [orderRes]: any = await connection.execute(
       `INSERT INTO sales_orders (order_number, vendor_id, branch_id, customer_name, total_amount, discount_percentage, discount_amount, final_amount, payment_method, admin_id, batch_number, expiry_date, dispatch_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [order_number || `SO-${Date.now()}`, vendor_id || null, branch_id && String(branch_id).trim().toLowerCase() === 'main' ? null : (branch_id || null), resolvedCustomerName || 'Counter Customer', totalAmount, discountPercentage, discountAmount, finalAmount, payment_method || 'cash', admin_id, batch_number || null, expiry_date || null, 'pending', dispatch_date || new Date()]
+      [order_number || `SO-${Date.now()}`, vendor_id || null, branch_id && String(branch_id).trim().toLowerCase() === 'main' ? null : (branch_id || null), resolvedCustomerName || 'Counter Customer', totalAmount, discountPercentage, discountAmount, finalAmount, payment_method || 'cash', admin_id, batch_number || null, sanitizedExpiryDate, 'pending', sanitizedDispatchDate]
     );
     const sale_id = orderRes.insertId;
 
@@ -81,7 +84,7 @@ export const createSalesOrder = async (req: Request, res: Response) => {
 
       await connection.execute(
         `INSERT INTO sales_order_items (sale_id, menu_item_id, quantity, price, expiry_date, batch_number) VALUES (?, ?, ?, ?, ?, ?)`,
-        [sale_id, item.menu_item_id, item.quantity, item.price, expiry_date || null, batch_number || null]
+        [sale_id, item.menu_item_id, item.quantity, item.price, sanitizedExpiryDate, batch_number || null]
       );
 
       await connection.execute('UPDATE menu_items SET current_stock = current_stock - ? WHERE menu_item_id = ?', [item.quantity, item.menu_item_id]);
