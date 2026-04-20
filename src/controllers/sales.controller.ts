@@ -11,6 +11,7 @@ export const getSales = async (req: Request, res: Response) => {
       b.name_en as branch_name
       FROM sales_orders s 
       LEFT JOIN branches b ON s.branch_id = b.branch_id
+      WHERE s.deleted_at IS NULL
       ORDER BY s.created_at DESC
     `);
     return successResponse(res, rows);
@@ -171,6 +172,78 @@ export const updateSaleStatus = async (req: Request, res: Response) => {
     return successResponse(res, null, 'Status updated successfully');
   } catch (error) {
     return errorResponse(res, 'Update failed', 500, error);
+  }
+};
+
+export const deleteSale = async (req: Request, res: Response) => {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const { id } = req.params;
+    const admin_id = (req as any).user?.admin_id || 1;
+
+    // 1. Get the items in this sale
+    const [items]: any = await connection.execute(
+      'SELECT menu_item_id, quantity FROM sales_order_items WHERE sale_id = ?',
+      [id]
+    );
+
+    // 2. Loop through items and restore stock (Reverse BOM logic)
+    for (const item of items) {
+      const [ingredients]: any = await connection.execute(`
+        SELECT mii.inventory_item_id, mii.quantity, mii.package_id, ip.multiplier
+        FROM menu_item_ingredients mii
+        LEFT JOIN inventory_item_packages ip ON mii.package_id = ip.package_id
+        WHERE mii.menu_item_id = ?
+      `, [item.menu_item_id]);
+
+      for (const ingredient of ingredients) {
+        let multiplier = 1;
+        if (ingredient.package_id === 'virtual_gram' || ingredient.package_id === 'virtual_ml') {
+          multiplier = 0.001;
+        } else if (ingredient.multiplier) {
+          multiplier = Number(ingredient.multiplier);
+        }
+
+        const totalRestoration = Number(ingredient.quantity) * Number(item.quantity) * multiplier;
+        
+        // Restore to global count
+        await connection.execute(
+          'UPDATE inventory_items SET current_stock = current_stock + ? WHERE inventory_item_id = ?',
+          [totalRestoration, ingredient.inventory_item_id]
+        );
+
+        // Restore to oldest active batch (FIFO logic)
+        const [targetBatch]: any = await connection.execute(
+          'SELECT batch_id FROM inventory_batches WHERE inventory_item_id = ? AND status = "active" ORDER BY created_at ASC LIMIT 1',
+          [ingredient.inventory_item_id]
+        );
+
+        if (targetBatch.length > 0) {
+          await connection.execute(
+            'UPDATE inventory_batches SET remaining_quantity = remaining_quantity + ?, status = "active" WHERE batch_id = ?',
+            [totalRestoration, targetBatch[0].batch_id]
+          );
+        }
+
+        // Log restoration
+        await connection.execute(
+          'INSERT INTO audit_logs (admin_id, action, entity_name, entity_id, new_values) VALUES (?, ?, ?, ?, ?)',
+          [admin_id, 'Stock Restoration (Delete Order)', 'InventoryItem', ingredient.inventory_item_id, JSON.stringify({ sale_id: id, restored_qty: totalRestoration })]
+        );
+      }
+    }
+
+    // 3. Mark as deleted
+    await connection.execute('UPDATE sales_orders SET deleted_at = CURRENT_TIMESTAMP WHERE sale_id = ?', [id]);
+    
+    await connection.commit();
+    return successResponse(res, null, 'Order deleted and stock reverted successfully');
+  } catch (error: any) {
+    if (connection) await connection.rollback();
+    return errorResponse(res, 'Failed to delete order and revert stock: ' + error.message, 500, error);
+  } finally {
+    if (connection) connection.release();
   }
 };
 

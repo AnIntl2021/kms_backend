@@ -16,6 +16,7 @@ export const getProductionLogs = async (req: Request, res: Response) => {
       FROM production_logs pl
       LEFT JOIN production_items pi ON pl.production_id = pi.production_id
       LEFT JOIN menu_items mi ON pi.menu_item_id = mi.menu_item_id
+      WHERE pl.deleted_at IS NULL
       GROUP BY pl.production_id
       ORDER BY pl.production_date DESC, pl.production_id DESC
     `);
@@ -81,5 +82,74 @@ export const recordBatchProduction = async (req: Request, res: Response) => {
     return errorResponse(res, error.message || 'Production failed');
   } finally {
     connection.release();
+  }
+};
+
+export const deleteProductionBatch = async (req: Request, res: Response) => {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const { id } = req.params;
+
+    // 1. Get batch items and production info
+    const [items]: any = await connection.execute(
+      'SELECT menu_item_id, quantity_produced FROM production_items WHERE production_id = ?',
+      [id]
+    );
+
+    // 2. Revert Stock
+    for (const item of items) {
+      // 2a. Deduct produced products from menu_items
+      await connection.execute(
+        'UPDATE menu_items SET current_stock = current_stock - ? WHERE menu_item_id = ?',
+        [item.quantity_produced, item.menu_item_id]
+      );
+
+      // 2b. Find ingredients and restore them to inventory
+      const [ingredients]: any = await connection.execute(
+        `SELECT 
+          mii.inventory_item_id, 
+          mii.quantity as ingredient_qty, 
+          IFNULL(iip.multiplier, 1) as multiplier 
+         FROM menu_item_ingredients mii
+         LEFT JOIN inventory_item_packages iip ON mii.package_id = iip.package_id
+         WHERE mii.menu_item_id = ?`,
+        [item.menu_item_id]
+      );
+
+      for (const ing of ingredients) {
+        const totalRestoration = (Number(ing.ingredient_qty) / Number(ing.multiplier)) * Number(item.quantity_produced);
+        
+        // Restore to global stock
+        await connection.execute(
+          'UPDATE inventory_items SET current_stock = current_stock + ? WHERE inventory_item_id = ?',
+          [totalRestoration, ing.inventory_item_id]
+        );
+
+        // Restore to oldest active batch (FIFO logic)
+        const [targetBatch]: any = await connection.execute(
+          'SELECT batch_id FROM inventory_batches WHERE inventory_item_id = ? AND status = "active" ORDER BY created_at ASC LIMIT 1',
+          [ing.inventory_item_id]
+        );
+
+        if (targetBatch.length > 0) {
+          await connection.execute(
+            'UPDATE inventory_batches SET remaining_quantity = remaining_quantity + ?, status = "active" WHERE batch_id = ?',
+            [totalRestoration, targetBatch[0].batch_id]
+          );
+        }
+      }
+    }
+
+    // 3. Mark as deleted
+    await connection.execute('UPDATE production_logs SET deleted_at = CURRENT_TIMESTAMP WHERE production_id = ?', [id]);
+    
+    await connection.commit();
+    return successResponse(res, null, 'Production batch deleted and stock reverted successfully');
+  } catch (error: any) {
+    if (connection) await connection.rollback();
+    return errorResponse(res, 'Failed to delete and revert production batch: ' + error.message, 500, error);
+  } finally {
+    if (connection) connection.release();
   }
 };
