@@ -139,6 +139,23 @@ export const processReturn = async (req: Request, res: Response) => {
     const return_id = returnRes.insertId;
 
     for (const item of items) {
+      // 🛡️ VALIDATION: CHECK REMAINING QUANTITY
+      const [stockInfo]: any = await connection.execute(`
+        SELECT 
+          (si.quantity - IFNULL((
+            SELECT SUM(ri.quantity) 
+            FROM sales_return_items ri 
+            JOIN sales_returns sr ON ri.return_id = sr.return_id 
+            WHERE sr.sale_id = si.sale_id AND ri.menu_item_id = si.menu_item_id
+          ), 0)) as remaining_qty
+        FROM sales_order_items si
+        WHERE si.sale_id = ? AND si.menu_item_id = ?
+      `, [sale_id, item.menu_item_id || item.product_id]);
+
+      if (stockInfo.length === 0 || stockInfo[0].remaining_qty < item.quantity) {
+        throw new Error(`Insufficient quantity for return of item ID ${item.menu_item_id || item.product_id}. Remaining: ${stockInfo[0]?.remaining_qty || 0}`);
+      }
+
       await connection.execute(
         'INSERT INTO sales_return_items (return_id, menu_item_id, quantity, unit_price, expiry_date) VALUES (?, ?, ?, ?, ?)',
         [return_id, item.menu_item_id || item.product_id, item.quantity, item.price || item.unit_price, item.expiry_date ? String(item.expiry_date).split('T')[0] : null]
@@ -269,15 +286,40 @@ export const getOrderItems = async (req: Request, res: Response) => {
   try {
     const [items]: any = await pool.execute(`
       SELECT 
-        si.menu_item_id, si.quantity, si.price,
+        si.menu_item_id, 
+        (si.quantity - IFNULL((
+          SELECT SUM(ri.quantity) 
+          FROM sales_return_items ri 
+          JOIN sales_returns sr ON ri.return_id = sr.return_id 
+          WHERE sr.sale_id = si.sale_id AND ri.menu_item_id = si.menu_item_id
+        ), 0)) as quantity, 
+        si.price,
         m.name_en, m.name_ar
       FROM sales_order_items si
       JOIN menu_items m ON si.menu_item_id = m.menu_item_id
       WHERE si.sale_id = ?
+      HAVING quantity > 0
     `, [sale_id]);
     return successResponse(res, items);
   } catch (error) {
     return errorResponse(res, 'Failed to fetch order items', 500, error);
+  }
+};
+
+export const getReturnItems = async (req: Request, res: Response) => {
+  const { return_id } = req.params;
+  try {
+    const [items]: any = await pool.execute(`
+      SELECT 
+        ri.menu_item_id, ri.quantity, ri.unit_price as price,
+        m.name_en, m.name_ar, m.barcode as item_code
+      FROM sales_return_items ri
+      LEFT JOIN menu_items m ON ri.menu_item_id = m.menu_item_id
+      WHERE ri.return_id = ?
+    `, [return_id]);
+    return successResponse(res, items);
+  } catch (error) {
+    return errorResponse(res, 'Failed to fetch return items', 500, error);
   }
 };
 
