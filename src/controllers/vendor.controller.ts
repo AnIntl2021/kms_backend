@@ -22,12 +22,12 @@ export const createVendor = async (req: Request, res: Response) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    const { name_en, name_ar, contact_person, phone, email, address, type, status, branches } = req.body;
+    const { name_en, name_ar, contact_person, phone, email, address, type, status, default_discount, branches } = req.body;
     
     // 1. Create Parent Partner
     const [result]: any = await connection.execute(
-      'INSERT INTO vendors (name_en, name_ar, contact_person, phone, email, address, type, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [name_en, name_ar, contact_person, phone, email, address, type || 'supplier', status || 'active']
+      'INSERT INTO vendors (name_en, name_ar, contact_person, phone, email, address, type, status, default_discount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [name_en, name_ar, contact_person, phone, email, address, type || 'supplier', status || 'active', default_discount || 0]
     );
     const partnerId = result.insertId;
 
@@ -57,12 +57,12 @@ export const updateVendor = async (req: Request, res: Response) => {
   try {
     await connection.beginTransaction();
     const { id } = req.params;
-    const { name_en, name_ar, contact_person, phone, email, address, status, type, branches } = req.body;
+    const { name_en, name_ar, contact_person, phone, email, address, status, type, default_discount, branches } = req.body;
     
     // 1. Update Parent
     await connection.execute(
-      'UPDATE vendors SET name_en = ?, name_ar = ?, contact_person = ?, phone = ?, email = ?, address = ?, status = ?, type = ? WHERE vendor_id = ?',
-      [name_en, name_ar, contact_person, phone, email, address, status, type, id]
+      'UPDATE vendors SET name_en = ?, name_ar = ?, contact_person = ?, phone = ?, email = ?, address = ?, status = ?, type = ?, default_discount = ? WHERE vendor_id = ?',
+      [name_en, name_ar, contact_person, phone, email, address, status, type, default_discount || 0, id]
     );
 
     // 2. 🛡️ SYNC BRANCH NETWORK

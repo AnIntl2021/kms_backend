@@ -90,6 +90,60 @@ const initDistributionEngine = async () => {
                 if (err.errno !== 1060) console.error(`Soft Delete Sync (${table}):`, err.message);
             }
         }
+        
+        // 🛡️ WASTAGE REPORTING ENGINE SYNC
+        try {
+            await pool.execute(`ALTER TABLE wastage ADD COLUMN menu_item_id INT DEFAULT NULL AFTER product_id`);
+        } catch (err: any) {
+            if (err.errno !== 1060) console.error("Wastage Column Sync (menu_item):", err.message);
+        }
+        try {
+            await pool.execute(`ALTER TABLE wastage ADD COLUMN vendor_id INT DEFAULT NULL AFTER menu_item_id`);
+        } catch (err: any) {
+            if (err.errno !== 1060) console.error("Wastage Column Sync (vendor_id):", err.message);
+        }
+        try {
+            await pool.execute(`ALTER TABLE wastage ADD CONSTRAINT fk_wastage_menu_item FOREIGN KEY (menu_item_id) REFERENCES menu_items(menu_item_id) ON DELETE SET NULL`);
+        } catch (err: any) {
+            if (err.errno !== 1061) console.error("Wastage Constraint Sync (menu_item):", err.message);
+        }
+        try {
+            await pool.execute(`ALTER TABLE wastage ADD CONSTRAINT fk_wastage_vendor FOREIGN KEY (vendor_id) REFERENCES vendors(vendor_id) ON DELETE SET NULL`);
+        } catch (err: any) {
+            if (err.errno !== 1061) console.error("Wastage Constraint Sync (vendor_id):", err.message);
+        }
+
+        // 🛡️ SALESMAN MODULE ENGINE SYNC
+        try {
+            await pool.execute(`
+                CREATE TABLE IF NOT EXISTS salesmen (
+                    salesman_id INT AUTO_INCREMENT PRIMARY KEY,
+                    name_en VARCHAR(255) NOT NULL,
+                    name_ar VARCHAR(255),
+                    phone VARCHAR(20),
+                    email VARCHAR(100),
+                    commission_rate DECIMAL(5,2) DEFAULT 0.00,
+                    status ENUM('active', 'inactive') DEFAULT 'active',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    deleted_at TIMESTAMP NULL
+                ) ENGINE=InnoDB
+            `);
+        } catch (err: any) {
+            console.error("Salesman Table Sync:", err.message);
+        }
+
+        try {
+            await pool.execute(`ALTER TABLE sales_orders ADD COLUMN salesman_id INT NULL AFTER admin_id`);
+        } catch (err: any) {
+            if (err.errno !== 1060) console.error("Sales Order Salesman Sync:", err.message);
+        }
+
+        try {
+            await pool.execute(`ALTER TABLE sales_orders ADD CONSTRAINT fk_sales_salesman FOREIGN KEY (salesman_id) REFERENCES salesmen(salesman_id) ON DELETE SET NULL`);
+        } catch (err: any) {
+            if (err.errno !== 1061) console.error("Sales Order Salesman Constraint:", err.message);
+        }
 
         console.log("🚚 Distribution Branch Hub: INITIALIZED & READY. 🛡️🚀");
     } catch (err) {

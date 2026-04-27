@@ -4,15 +4,25 @@ import { successResponse, errorResponse } from '../utils/response.js';
 
 export const getSales = async (req: Request, res: Response) => {
   try {
+    // 🤖 AUTO-SETTLEMENT ORACLE: Mark expired credit orders as 'paid'
+    await pool.execute(`
+      UPDATE sales_orders 
+      SET payment_status = 'paid' 
+      WHERE payment_status = 'credit' 
+      AND expiry_date <= CURRENT_DATE()
+      AND deleted_at IS NULL
+    `);
+
     const [rows]: any = await pool.execute(`
       SELECT s.*, 
       (SELECT COUNT(*) FROM sales_order_items WHERE sale_id = s.sale_id) as items_count,
+      IFNULL((SELECT SUM(total_credit_amount) FROM sales_returns WHERE sale_id = s.sale_id), 0) as returns_amount,
       DATE_FORMAT(s.created_at, '%Y-%m-%d') as dispatch_date,
       b.name_en as branch_name
       FROM sales_orders s 
       LEFT JOIN branches b ON s.branch_id = b.branch_id
       WHERE s.deleted_at IS NULL
-      ORDER BY s.created_at DESC
+      ORDER BY s.created_at DESC, s.sale_id DESC
     `);
     return successResponse(res, rows);
   } catch (error) {
@@ -57,7 +67,7 @@ export const createSale = async (req: any, res: Response) => {
 
     const [orderRes]: any = await connection.execute(
       'INSERT INTO sales_orders (order_number, vendor_id, branch_id, customer_name, total_amount, payment_status, dispatch_status, batch_number, expiry_date, admin_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      ['PENDING', vendor_id || null, (branch_id === 'main' ? null : branch_id) || null, customer_name, total_amount, payment_status || 'paid', dispatch_status || 'pending', batch_number || null, expiry_date || null, admin_id, dispatch_date || new Date()]
+      ['PENDING', vendor_id || null, (branch_id === 'main' ? null : branch_id) || null, customer_name, total_amount, payment_status || 'credit', dispatch_status || 'pending', batch_number || null, expiry_date || null, admin_id, dispatch_date || new Date()]
     );
 
     const sale_id = orderRes.insertId;
@@ -142,6 +152,17 @@ export const createSale = async (req: any, res: Response) => {
     return errorResponse(res, 'Failed to create sale: ' + (error instanceof Error ? error.message : String(error)), 500, error);
   } finally {
     if (connection) connection.release();
+  }
+};
+
+export const updatePaymentStatus = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { payment_status } = req.body;
+    await pool.execute('UPDATE sales_orders SET payment_status = ? WHERE sale_id = ?', [payment_status, id]);
+    return successResponse(res, null, 'Payment status updated');
+  } catch (error) {
+    return errorResponse(res, 'Update failed', 500, error);
   }
 };
 

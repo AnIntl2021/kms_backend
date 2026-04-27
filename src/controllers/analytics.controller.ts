@@ -8,8 +8,8 @@ export const getStoreForecasting = async (req: Request, res: Response) => {
     const [stats]: any = await pool.execute(`
       SELECT 
         v.vendor_id, 
-        v.name as vendor_name, 
-        SUM(CASE WHEN so.status = 'delivered' THEN so.total_amount ELSE 0 END) as sales_performance,
+        v.name_en as vendor_name, 
+        SUM(CASE WHEN so.dispatch_status IN ('delivered', 'dispatched', 'in_transit') THEN so.final_amount ELSE 0 END) as sales_performance,
         (
           SELECT SUM(w.quantity) 
           FROM wastage w 
@@ -24,9 +24,10 @@ export const getStoreForecasting = async (req: Request, res: Response) => {
           AND w.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
         ) as recent_loss_kwd,
         (
-          SELECT SUM(so_inner.total_amount) 
+          SELECT SUM(so_inner.final_amount) 
           FROM sales_orders so_inner 
           WHERE so_inner.vendor_id = v.vendor_id 
+          AND so_inner.dispatch_status IN ('delivered', 'dispatched', 'in_transit')
           AND so_inner.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
         ) as recent_sales
       FROM vendors v
@@ -79,14 +80,30 @@ export const getProductionHealth = async (req: Request, res: Response) => {
   try {
     const [hp]: any = await pool.execute(`
       SELECT 
-        (SELECT SUM(quantity_produced) FROM production_items pi JOIN production_logs pl ON pi.production_id = pl.production_id WHERE pl.production_date >= DATE_SUB(NOW(), INTERVAL 7 DAY)) as total_produced,
+        (SELECT SUM(quantity_produced) FROM production_items) as total_produced,
         (SELECT SUM(quantity) FROM wastage WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)) as total_wasted,
         (SELECT SUM(w.quantity * mi.price) FROM wastage w JOIN menu_items mi ON w.menu_item_id = mi.menu_item_id WHERE w.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)) as total_loss_kwd,
-        (SELECT SUM(total_amount) FROM sales_orders WHERE status = 'delivered' AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)) as total_revenue_7d
+        (SELECT SUM(final_amount) FROM sales_orders WHERE dispatch_status IN ('delivered', 'dispatched', 'in_transit') AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)) as total_revenue_7d,
+        (SELECT IFNULL(SUM(total_credit_amount), 0) FROM sales_returns WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)) as total_returns_7d,
+        (
+          SELECT IFNULL(SUM(soi.quantity * COALESCE(mi.cost_price, 0)), 0)
+          FROM sales_order_items soi
+          JOIN sales_orders so ON soi.sale_id = so.sale_id
+          LEFT JOIN menu_items mi ON soi.menu_item_id = mi.menu_item_id
+          WHERE so.dispatch_status IN ('delivered', 'dispatched', 'in_transit') 
+          AND so.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+        ) as total_production_cost_7d
     `);
 
-    return successResponse(res, hp[0]);
+    const data = hp[0];
+    const total_profit_7d = (parseFloat(data.total_revenue_7d || '0') - parseFloat(data.total_production_cost_7d || '0') - parseFloat(data.total_returns_7d || '0'));
+
+    return successResponse(res, {
+      ...data,
+      total_profit_7d
+    });
   } catch (error) {
-     return errorResponse(res, 'Failed to fetch production health', 500, error);
+    console.error('Health Error:', error);
+    return errorResponse(res, 'Failed to fetch production health', 500, error);
   }
 };

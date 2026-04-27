@@ -53,7 +53,7 @@ export const createSalesOrder = async (req: Request, res: Response) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    const { vendor_id, branch_id, customer_name, items, payment_method, order_number, batch_number, expiry_date, discount_percentage, dispatch_date } = req.body;
+    const { vendor_id, branch_id, customer_name, items, payment_method, order_number, batch_number, expiry_date, discount_percentage, dispatch_date, salesman_id } = req.body;
     const admin_id = (req as any).user.admin_id;
 
     const totalAmount = items.reduce((acc: number, item: any) => acc + (Number(item.quantity) * Number(item.price)), 0);
@@ -71,8 +71,8 @@ export const createSalesOrder = async (req: Request, res: Response) => {
     const sanitizedExpiryDate = expiry_date ? String(expiry_date).split('T')[0] : null;
 
     const [orderRes]: any = await connection.execute(
-      `INSERT INTO sales_orders (order_number, vendor_id, branch_id, customer_name, total_amount, discount_percentage, discount_amount, final_amount, payment_method, admin_id, batch_number, expiry_date, dispatch_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [order_number || `SO-${Date.now()}`, vendor_id || null, branch_id && String(branch_id).trim().toLowerCase() === 'main' ? null : (branch_id || null), resolvedCustomerName || 'Counter Customer', totalAmount, discountPercentage, discountAmount, finalAmount, payment_method || 'cash', admin_id, batch_number || null, sanitizedExpiryDate, 'pending', sanitizedDispatchDate]
+      `INSERT INTO sales_orders (order_number, vendor_id, branch_id, customer_name, total_amount, discount_percentage, discount_amount, final_amount, payment_method, payment_status, admin_id, salesman_id, batch_number, expiry_date, dispatch_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [order_number || `SO-${Date.now()}`, vendor_id || null, branch_id && String(branch_id).trim().toLowerCase() === 'main' ? null : (branch_id || null), resolvedCustomerName || 'Counter Customer', totalAmount, discountPercentage, discountAmount, finalAmount, payment_method || 'credit', 'credit', admin_id, salesman_id || null, batch_number || null, sanitizedExpiryDate, 'pending', sanitizedDispatchDate]
     );
     const sale_id = orderRes.insertId;
 
@@ -109,12 +109,14 @@ export const getDispatches = async (req: Request, res: Response) => {
         DATE_FORMAT(s.created_at, '%Y-%m-%d') as dispatch_date,
         s.created_at,
         v.name_en as client_name,
-        pb.name_en as branch_name
+        pb.name_en as branch_name,
+        sm.name_en as salesman_name
       FROM sales_orders s
       LEFT JOIN vendors v ON s.vendor_id = v.vendor_id
       LEFT JOIN partner_branches pb ON s.branch_id = pb.branch_id
+      LEFT JOIN salesmen sm ON s.salesman_id = sm.salesman_id
       WHERE s.vendor_id IS NOT NULL AND s.deleted_at IS NULL
-      ORDER BY s.created_at DESC
+      ORDER BY s.created_at DESC, s.sale_id DESC
     `);
     return successResponse(res, dispatches);
   } catch (error) {
@@ -179,7 +181,7 @@ export const processReturn = async (req: Request, res: Response) => {
 
 export const updateSalesOrder = async (req: Request, res: Response) => {
   const { sale_id } = req.params;
-  const { vendor_id, branch_id, customer_name, items, batch_number, expiry_date, discount_percentage, dispatch_status, dispatch_date } = req.body;
+  const { vendor_id, branch_id, customer_name, items, batch_number, expiry_date, discount_percentage, dispatch_status, dispatch_date, salesman_id } = req.body;
   const connection = await pool.getConnection();
 
   try {
@@ -219,6 +221,7 @@ export const updateSalesOrder = async (req: Request, res: Response) => {
         final_amount = ?, 
         batch_number = ?, 
         expiry_date = ?,
+        salesman_id = ?,
         dispatch_status = ?${sanitizedDisp ? ', created_at = ?' : ''}
       WHERE sale_id = ?`,
       [
@@ -231,6 +234,7 @@ export const updateSalesOrder = async (req: Request, res: Response) => {
         finalAmount, 
         batch_number || null, 
         sanitizedExp, 
+        salesman_id || null,
         dispatch_status || existing[0].dispatch_status || 'pending',
         ...(sanitizedDisp ? [sanitizedDisp] : []),
         sale_id
@@ -257,6 +261,53 @@ export const updateSalesOrder = async (req: Request, res: Response) => {
   } catch (error: any) {
     await connection.rollback();
     return errorResponse(res, error.message || 'Failed to update order', 500, error);
+  } finally {
+    connection.release();
+  }
+};
+
+export const updateReturn = async (req: Request, res: Response) => {
+  const { return_id } = req.params;
+  const { items, reason, salesman_id } = req.body;
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    // 1. Wipe old items and wastage entries
+    await connection.execute('DELETE FROM sales_return_items WHERE return_id = ?', [return_id]);
+    await connection.execute('DELETE FROM wastage WHERE return_id = ?', [return_id]);
+
+    // 2. Recalculate and Update Main Return Record
+    let total_credit = 0;
+    items.forEach((i: any) => total_credit += (Number(i.quantity) * Number(i.unit_price || i.price)));
+
+    await connection.execute(
+      'UPDATE sales_returns SET reason = ?, salesman_id = ?, total_credit_amount = ? WHERE return_id = ?',
+      [reason || 'Expired', salesman_id || null, total_credit, return_id]
+    );
+
+    // 3. Insert New Corrected Items & Wastage
+    const admin_id = (req as any).user.admin_id;
+    for (const item of items) {
+      if (Number(item.quantity) <= 0) continue;
+
+      await connection.execute(
+        'INSERT INTO sales_return_items (return_id, menu_item_id, quantity, unit_price, expiry_date) VALUES (?, ?, ?, ?, ?)',
+        [return_id, item.menu_item_id || item.product_id, item.quantity, item.price || item.unit_price, item.expiry_date ? String(item.expiry_date).split('T')[0] : null]
+      );
+
+      await connection.execute(
+        'INSERT INTO wastage (menu_item_id, return_id, quantity, reason_en, admin_id) VALUES (?, ?, ?, ?, ?)',
+        [item.menu_item_id || item.product_id, return_id, item.quantity, `Returned (Updated): ${reason || 'Expired'}`, admin_id]
+      );
+    }
+
+    await connection.commit();
+    return successResponse(res, null, 'Return record updated successfully.');
+  } catch (error: any) {
+    await connection.rollback();
+    return errorResponse(res, error.message || 'Failed to update return', 500, error);
   } finally {
     connection.release();
   }

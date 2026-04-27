@@ -13,6 +13,8 @@ import settingsRoutes from './settings.routes';
 import analyticsRoutes from './analytics.routes';
 import wastageRoutes from './wastage.routes';
 import notificationRoutes from './notification.routes';
+import reportsRoutes from './reports.routes';
+import salesmanRoutes from './salesman.routes';
 
 const router = Router();
 
@@ -30,5 +32,7 @@ router.use('/factory', factoryRoutes);
 router.use('/settings', settingsRoutes);
 router.use('/analytics', analyticsRoutes);
 router.use('/notifications', notificationRoutes);
+router.use('/reports', reportsRoutes);
+router.use('/salesmen', salesmanRoutes);
 
 export default router;
