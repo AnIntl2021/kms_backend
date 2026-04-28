@@ -72,7 +72,7 @@ export const createSalesOrder = async (req: Request, res: Response) => {
 
     const [orderRes]: any = await connection.execute(
       `INSERT INTO sales_orders (order_number, vendor_id, branch_id, customer_name, total_amount, discount_percentage, discount_amount, final_amount, payment_method, payment_status, admin_id, salesman_id, batch_number, expiry_date, dispatch_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [order_number || `SO-${Date.now()}`, vendor_id || null, branch_id && String(branch_id).trim().toLowerCase() === 'main' ? null : (branch_id || null), resolvedCustomerName || 'Counter Customer', totalAmount, discountPercentage, discountAmount, finalAmount, payment_method || 'credit', 'credit', admin_id, salesman_id || null, batch_number || null, sanitizedExpiryDate, 'pending', sanitizedDispatchDate]
+      [order_number || `SO-${Date.now()}`, vendor_id || null, branch_id && String(branch_id).trim().toLowerCase() === 'main' ? null : (branch_id || null), resolvedCustomerName || 'Counter Customer', totalAmount, discountPercentage, discountAmount, finalAmount, payment_method || 'credit', 'pending', admin_id, salesman_id || null, batch_number || null, sanitizedExpiryDate, 'pending', sanitizedDispatchDate]
     );
     const sale_id = orderRes.insertId;
 
@@ -128,15 +128,15 @@ export const processReturn = async (req: Request, res: Response) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    const { sale_id, vendor_id, branch_id, items, reason } = req.body;
+    const { sale_id, vendor_id, branch_id, items, reason, salesman_id } = req.body;
     const admin_id = (req as any).user.admin_id;
 
     let total_credit = 0;
     items.forEach((i: any) => total_credit += (Number(i.quantity) * Number(i.unit_price)));
 
     const [returnRes]: any = await connection.execute(
-      'INSERT INTO sales_returns (sale_id, vendor_id, branch_id, reason, total_credit_amount, admin_id) VALUES (?, ?, ?, ?, ?, ?)',
-      [sale_id || null, vendor_id, branch_id && String(branch_id).trim().toLowerCase() === 'main' ? null : (branch_id || null), reason || 'Expired', total_credit, admin_id]
+      'INSERT INTO sales_returns (sale_id, vendor_id, branch_id, reason, total_credit_amount, admin_id, salesman_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [sale_id || null, vendor_id, branch_id && String(branch_id).trim().toLowerCase() === 'main' ? null : (branch_id || null), reason || 'Expired', total_credit, admin_id, salesman_id || null]
     );
     const return_id = returnRes.insertId;
 
