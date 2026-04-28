@@ -78,8 +78,8 @@ export const createSalesOrder = async (req: Request, res: Response) => {
 
     for (const item of items) {
       const [menuItem]: any = await connection.execute('SELECT current_stock, name_en FROM menu_items WHERE menu_item_id = ? FOR UPDATE', [item.menu_item_id]);
-      if (menuItem[0].current_stock < item.quantity) {
-        throw new Error(`Insufficient stock for ${menuItem[0].name_en}`);
+      if (Number(menuItem[0].current_stock) < Number(item.quantity)) {
+        throw new Error(`Insufficient stock for ${menuItem[0].name_en}. Have ${menuItem[0].current_stock}, need ${item.quantity}`);
       }
 
       await connection.execute(
