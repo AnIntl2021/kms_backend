@@ -116,7 +116,7 @@ export const createSale = async (req: any, res: Response) => {
         }
 
         const totalDeduction = Number(ingredient.quantity) * Number(item.quantity) * multiplier;
-        
+
         // 🛡️ THE MAYONNAISE FIFO CONSUMER ORACLE
         let remainingToDeduct = totalDeduction;
 
@@ -148,7 +148,7 @@ export const createSale = async (req: any, res: Response) => {
           'UPDATE inventory_items SET current_stock = current_stock - ? WHERE inventory_item_id = ?',
           [totalDeduction, ingredient.inventory_item_id]
         );
-        
+
         // Log movement
         await connection.execute(
           'INSERT INTO audit_logs (admin_id, action, entity_name, entity_id, new_values) VALUES (?, ?, ?, ?, ?)',
@@ -187,7 +187,7 @@ export const updateSaleStatus = async (req: Request, res: Response) => {
 
     // 📢 NOTIFICATION TRIGGER
     const [order]: any = await pool.execute('SELECT order_number, customer_name FROM sales_orders WHERE sale_id = ?', [id]);
-    
+
     // 🛡️ ACTUAL DATABASE UPDATE (THE MISSING LINK)
     await pool.execute(
       'UPDATE sales_orders SET dispatch_status = ? WHERE sale_id = ?',
@@ -197,7 +197,7 @@ export const updateSaleStatus = async (req: Request, res: Response) => {
     if (order.length > 0) {
       const msg = `⚡ Order ${order[0].order_number} (${order[0].customer_name}) status updated to: ${dispatch_status.toUpperCase()}`;
       const type = dispatch_status === 'delivered' ? 'success' : (dispatch_status === 'dispatched' ? 'info' : 'warning');
-      
+
       await pool.execute(
         'INSERT INTO notifications (message, type) VALUES (?, ?)',
         [msg, type]
@@ -241,7 +241,7 @@ export const deleteSale = async (req: Request, res: Response) => {
         }
 
         const totalRestoration = Number(ingredient.quantity) * Number(item.quantity) * multiplier;
-        
+
         // Restore to global count
         await connection.execute(
           'UPDATE inventory_items SET current_stock = current_stock + ? WHERE inventory_item_id = ?',
@@ -271,7 +271,7 @@ export const deleteSale = async (req: Request, res: Response) => {
 
     // 3. Mark as deleted
     await connection.execute('UPDATE sales_orders SET deleted_at = CURRENT_TIMESTAMP WHERE sale_id = ?', [id]);
-    
+
     await connection.commit();
     return successResponse(res, null, 'Order deleted and stock reverted successfully');
   } catch (error: any) {
@@ -319,7 +319,7 @@ export const returnOrder = async (req: Request, res: Response) => {
 
         const totalRestoration = Number(ingredient.quantity) * Number(item.quantity) * multiplier;
         console.log(`🔋 RESTORING INGREDIENT FIFO: id=${ingredient.inventory_item_id}, qty=${totalRestoration}`);
-        
+
         // 🛡️ RE-INTEGRATE INTO OLDEST ACTIVE BATCH
         // (Maintaining the FIFO priority for the next sale)
         const [targetBatch]: any = await connection.execute(

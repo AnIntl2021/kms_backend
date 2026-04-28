@@ -226,15 +226,15 @@ export const updateSalesOrder = async (req: Request, res: Response) => {
         dispatch_status = ?${sanitizedDisp ? ', created_at = ?' : ''}
       WHERE sale_id = ?`,
       [
-        vendor_id || null, 
-        branch_id && String(branch_id).trim().toLowerCase() === 'main' ? null : (branch_id || null), 
-        customer_name || 'Counter Customer', 
-        totalAmount, 
-        discP, 
-        discountAmount, 
-        finalAmount, 
-        batch_number || null, 
-        sanitizedExp, 
+        vendor_id || null,
+        branch_id && String(branch_id).trim().toLowerCase() === 'main' ? null : (branch_id || null),
+        customer_name || 'Counter Customer',
+        totalAmount,
+        discP,
+        discountAmount,
+        finalAmount,
+        batch_number || null,
+        sanitizedExp,
         salesman_id || null,
         dispatch_status || existing[0].dispatch_status || 'pending',
         ...(sanitizedDisp ? [sanitizedDisp] : []),
@@ -244,9 +244,10 @@ export const updateSalesOrder = async (req: Request, res: Response) => {
 
     // 5. Deduct New Stock & Insert Items
     for (const item of items) {
-      const [menuItem]: any = await connection.execute('SELECT current_stock, name_en FROM menu_items WHERE menu_item_id = ? FOR UPDATE', [item.menu_item_id]);
-      if (menuItem[0].current_stock < item.quantity) {
-        throw new Error(`Insufficient stock for ${menuItem[0].name_en} during update.`);
+      const [stockCheck]: any = await connection.execute('SELECT current_stock, name_en FROM menu_items WHERE menu_item_id = ? FOR UPDATE', [item.menu_item_id]);
+      
+      if (Number(stockCheck[0].current_stock) < Number(item.quantity)) {
+        throw new Error(`Insufficient stock for ${stockCheck[0].name_en} during update. Have ${stockCheck[0].current_stock}, need ${item.quantity}`);
       }
 
       await connection.execute(
@@ -399,7 +400,7 @@ export const deleteSalesOrder = async (req: Request, res: Response) => {
       for (const ingredient of ingredients) {
         const multiplier = Number(ingredient.multiplier || 1);
         const totalRestoration = Number(ingredient.quantity) * Number(item.quantity) * multiplier;
-        
+
         // Restore to global count
         await connection.execute(
           'UPDATE inventory_items SET current_stock = current_stock + ? WHERE inventory_item_id = ?',
@@ -423,7 +424,7 @@ export const deleteSalesOrder = async (req: Request, res: Response) => {
 
     // 3. Mark as deleted
     await connection.execute('UPDATE sales_orders SET deleted_at = CURRENT_TIMESTAMP WHERE sale_id = ?', [id]);
-    
+
     await connection.commit();
     return successResponse(res, null, 'Order deleted and stock reverted successfully');
   } catch (error: any) {
