@@ -18,9 +18,12 @@ export const getSales = async (req: Request, res: Response) => {
       (SELECT COUNT(*) FROM sales_order_items WHERE sale_id = s.sale_id) as items_count,
       IFNULL((SELECT SUM(total_credit_amount) FROM sales_returns WHERE sale_id = s.sale_id), 0) as returns_amount,
       DATE_FORMAT(s.created_at, '%Y-%m-%d') as dispatch_date,
-      b.name_en as branch_name
+      pb.name_en as branch_name,
+      pb.phone as branch_phone,
+      v.phone as client_phone
       FROM sales_orders s 
-      LEFT JOIN branches b ON s.branch_id = b.branch_id
+      LEFT JOIN partner_branches pb ON s.branch_id = pb.branch_id
+      LEFT JOIN vendors v ON s.vendor_id = v.vendor_id
       WHERE s.deleted_at IS NULL
       ORDER BY s.created_at DESC, s.sale_id DESC
     `);
@@ -36,8 +39,13 @@ export const getSaleById = async (req: Request, res: Response) => {
     const [orders]: any = await pool.execute(`
       SELECT s.*, 
              DATE_FORMAT(s.created_at, '%Y-%m-%d') as order_date,
-             DATE_FORMAT(s.created_at, '%Y-%m-%d') as dispatch_date
+             DATE_FORMAT(s.created_at, '%Y-%m-%d') as dispatch_date,
+             pb.name_en as branch_name,
+             pb.phone as branch_phone,
+             v.phone as client_phone
       FROM sales_orders s 
+      LEFT JOIN partner_branches pb ON s.branch_id = pb.branch_id
+      LEFT JOIN vendors v ON s.vendor_id = v.vendor_id
       WHERE s.sale_id = ?
     `, [id]);
 
