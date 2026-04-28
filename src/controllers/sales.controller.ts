@@ -20,10 +20,13 @@ export const getSales = async (req: Request, res: Response) => {
       DATE_FORMAT(s.created_at, '%Y-%m-%d') as dispatch_date,
       pb.name_en as branch_name,
       pb.phone as branch_phone,
-      v.phone as client_phone
+      v.phone as client_phone,
+      sm.name_en as salesman_name,
+      sm.phone as salesman_phone
       FROM sales_orders s 
       LEFT JOIN partner_branches pb ON s.branch_id = pb.branch_id
       LEFT JOIN vendors v ON s.vendor_id = v.vendor_id
+      LEFT JOIN salesmen sm ON s.salesman_id = sm.salesman_id
       WHERE s.deleted_at IS NULL
       ORDER BY s.created_at DESC, s.sale_id DESC
     `);
@@ -42,10 +45,13 @@ export const getSaleById = async (req: Request, res: Response) => {
              DATE_FORMAT(s.created_at, '%Y-%m-%d') as dispatch_date,
              pb.name_en as branch_name,
              pb.phone as branch_phone,
-             v.phone as client_phone
+             v.phone as client_phone,
+             sm.name_en as salesman_name,
+             sm.phone as salesman_phone
       FROM sales_orders s 
       LEFT JOIN partner_branches pb ON s.branch_id = pb.branch_id
       LEFT JOIN vendors v ON s.vendor_id = v.vendor_id
+      LEFT JOIN salesmen sm ON s.salesman_id = sm.salesman_id
       WHERE s.sale_id = ?
     `, [id]);
 

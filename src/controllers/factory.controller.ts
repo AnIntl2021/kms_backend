@@ -110,7 +110,8 @@ export const getDispatches = async (req: Request, res: Response) => {
         s.created_at,
         v.name_en as client_name,
         pb.name_en as branch_name,
-        sm.name_en as salesman_name
+        sm.name_en as salesman_name,
+        sm.phone as salesman_phone
       FROM sales_orders s
       LEFT JOIN vendors v ON s.vendor_id = v.vendor_id
       LEFT JOIN partner_branches pb ON s.branch_id = pb.branch_id
