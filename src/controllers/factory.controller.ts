@@ -142,6 +142,10 @@ export const processReturn = async (req: Request, res: Response) => {
     const return_id = returnRes.insertId;
 
     for (const item of items) {
+      if (Number(item.quantity) <= 0) continue;
+
+      const current_sale_id = item.sale_id || sale_id;
+
       // 🛡️ VALIDATION: CHECK REMAINING QUANTITY
       const [stockInfo]: any = await connection.execute(`
         SELECT 
@@ -153,10 +157,10 @@ export const processReturn = async (req: Request, res: Response) => {
           ), 0)) as remaining_qty
         FROM sales_order_items si
         WHERE si.sale_id = ? AND si.menu_item_id = ?
-      `, [sale_id, item.menu_item_id || item.product_id]);
+      `, [current_sale_id, item.menu_item_id || item.product_id]);
 
-      if (stockInfo.length === 0 || stockInfo[0].remaining_qty < item.quantity) {
-        throw new Error(`Insufficient quantity for return of item ID ${item.menu_item_id || item.product_id}. Remaining: ${stockInfo[0]?.remaining_qty || 0}`);
+      if (stockInfo.length === 0 || Number(stockInfo[0].remaining_qty) < Number(item.quantity)) {
+        throw new Error(`Insufficient quantity for return of item ID ${item.menu_item_id || item.product_id}. Remaining: ${stockInfo.length > 0 ? stockInfo[0].remaining_qty : 0}`);
       }
 
       await connection.execute(
