@@ -65,15 +65,34 @@ export const updateVendor = async (req: Request, res: Response) => {
       [name_en, name_ar, contact_person, phone, email, address, status, type, default_discount || 0, id]
     );
 
-    // 2. 🛡️ SYNC BRANCH NETWORK
+    // 2. 🛡️ SYNC BRANCH NETWORK (PRESERVE IDS TO PREVENT INVOICE BREAKAGE)
     if (branches && Array.isArray(branches)) {
-      // Simple sync: Clear and re-add for absolute state truth
-      await connection.execute('DELETE FROM partner_branches WHERE partner_id = ?', [id]);
-      for (const br of branches) {
+      const incomingBranchIds = branches.map(br => br.branch_id).filter(id => id);
+      
+      // Delete branches that are no longer in the list
+      if (incomingBranchIds.length > 0) {
         await connection.execute(
-          'INSERT INTO partner_branches (partner_id, name_en, name_ar, address, contact_person, phone) VALUES (?, ?, ?, ?, ?, ?)',
-          [id, br.name_en, br.name_ar || br.name_en, br.address || address, br.contact_person || contact_person, br.phone || phone]
+          `DELETE FROM partner_branches WHERE partner_id = ? AND branch_id NOT IN (${incomingBranchIds.map(() => '?').join(',')})`,
+          [id, ...incomingBranchIds]
         );
+      } else {
+        await connection.execute('DELETE FROM partner_branches WHERE partner_id = ?', [id]);
+      }
+
+      for (const br of branches) {
+        if (br.branch_id) {
+          // Update Existing Branch
+          await connection.execute(
+            'UPDATE partner_branches SET name_en = ?, name_ar = ?, address = ?, contact_person = ?, phone = ? WHERE branch_id = ? AND partner_id = ?',
+            [br.name_en, br.name_ar || br.name_en, br.address || address, br.contact_person || contact_person, br.phone || phone, br.branch_id, id]
+          );
+        } else {
+          // Insert New Branch
+          await connection.execute(
+            'INSERT INTO partner_branches (partner_id, name_en, name_ar, address, contact_person, phone) VALUES (?, ?, ?, ?, ?, ?)',
+            [id, br.name_en, br.name_ar || br.name_en, br.address || address, br.contact_person || contact_person, br.phone || phone]
+          );
+        }
       }
     }
 

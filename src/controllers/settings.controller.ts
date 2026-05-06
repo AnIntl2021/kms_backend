@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import pool from '../config/db';
 import { successResponse, errorResponse } from '../utils/response';
+import { runBackup } from '../utils/backup';
 
 export const getSettings = async (req: Request, res: Response) => {
   try {
@@ -35,5 +36,14 @@ export const updateSettings = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('UpdateSettings Error:', error);
     return errorResponse(res, 'Failed to update settings', 500, error);
+  }
+};
+
+export const triggerBackup = async (req: Request, res: Response) => {
+  const result = await runBackup();
+  if (result.success) {
+    return successResponse(res, { file: result.file }, 'Backup created and rotated successfully');
+  } else {
+    return errorResponse(res, 'Backup failed', 500, result.error);
   }
 };
