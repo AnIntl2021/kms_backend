@@ -195,7 +195,6 @@ export const updateSalesOrder = async (req: Request, res: Response) => {
     // 1. Check if order exists and is not locked
     const [existing]: any = await connection.execute('SELECT dispatch_status FROM sales_orders WHERE sale_id = ? FOR UPDATE', [sale_id]);
     if (existing.length === 0) throw new Error('Order not found');
-    if (existing[0].dispatch_status === 'delivered') throw new Error('Order is already delivered and locked.');
 
     // 2. Restore Old Stock
     const [oldItems]: any = await connection.execute('SELECT menu_item_id, quantity FROM sales_order_items WHERE sale_id = ?', [sale_id]);
