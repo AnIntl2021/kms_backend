@@ -181,3 +181,43 @@ export const getAnalyticsSummary = async (req: Request, res: Response) => {
     return errorResponse(res, 'Failed to fetch analytics summary', 500, error);
   }
 };
+
+export const getPurchaseReport = async (req: Request, res: Response) => {
+  try {
+    const { startDate, endDate, vendor_id, branch_id } = req.query;
+    let query = `
+      SELECT po.*, 
+      v.name_en as vendor_name, 
+      v.name_ar as vendor_name_ar,
+      pb.name_en as branch_name,
+      pb.name_ar as branch_name_ar,
+      DATE_FORMAT(po.date, '%Y-%m-%d') as report_date
+      FROM purchase_orders po
+      LEFT JOIN vendors v ON po.vendor_id = v.vendor_id
+      LEFT JOIN partner_branches pb ON po.branch_id = pb.branch_id
+      WHERE po.deleted_at IS NULL
+    `;
+    const params: any[] = [];
+
+    if (startDate && endDate) {
+      query += ` AND po.date BETWEEN ? AND ?`;
+      params.push(startDate, endDate);
+    }
+    if (vendor_id) {
+      query += ` AND po.vendor_id = ?`;
+      params.push(vendor_id);
+    }
+    if (branch_id) {
+      query += ` AND po.branch_id = ?`;
+      params.push(branch_id);
+    }
+
+    query += ` ORDER BY po.date DESC, po.purchase_id DESC`;
+
+    const [rows]: any = await pool.execute(query, params);
+    return successResponse(res, rows);
+  } catch (error) {
+    console.error('Purchase Report Error:', error);
+    return errorResponse(res, 'Failed to fetch purchase report', 500, error);
+  }
+};
