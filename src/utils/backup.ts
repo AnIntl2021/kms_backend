@@ -1,11 +1,9 @@
 
+import { config } from '../config/config';
 import { exec } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { promisify } from 'util';
-import dotenv from 'dotenv';
-
-dotenv.config();
 
 const execPromise = promisify(exec);
 
@@ -30,11 +28,10 @@ export async function runBackup() {
     const filePath = path.join(BACKUP_DIR, fileName);
 
     // 3. Construct mysqldump command
-    // Note: Assumes mysqldump is in the system PATH
-    const host = process.env.DB_HOST || 'localhost';
-    const user = process.env.DB_USER || 'root';
-    const password = process.env.DB_PASS || '';
-    const dbName = process.env.DB_NAME || 'fresh_n_fast_db';
+    const host = config.db.host || 'localhost';
+    const user = config.db.user || 'root';
+    const password = config.db.pass || '';
+    const dbName = config.db.name || 'fresh_n_fast_db';
 
     // Windows usually needs the password right after -p with no space
     const passPart = password ? `-p${password}` : '';
