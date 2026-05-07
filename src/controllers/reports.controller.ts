@@ -221,3 +221,38 @@ export const getPurchaseReport = async (req: Request, res: Response) => {
     return errorResponse(res, 'Failed to fetch purchase report', 500, error);
   }
 };
+
+export const getProductPerformanceReport = async (req: Request, res: Response) => {
+  try {
+    const { startDate, endDate } = req.query;
+    let query = `
+      SELECT 
+        mi.menu_item_id,
+        mi.name_en as product_name,
+        mi.name_ar as product_name_ar,
+        mi.category,
+        COALESCE(SUM(soi.quantity), 0) as total_quantity,
+        COALESCE(SUM(soi.quantity * soi.price), 0) as total_revenue,
+        COALESCE(SUM(soi.quantity * COALESCE(mi.cost_price, 0)), 0) as total_cost,
+        COALESCE((SUM(soi.quantity * soi.price) - SUM(soi.quantity * COALESCE(mi.cost_price, 0))), 0) as total_profit
+      FROM sales_order_items soi
+      JOIN sales_orders s ON soi.sale_id = s.sale_id
+      JOIN menu_items mi ON soi.menu_item_id = mi.menu_item_id
+      WHERE s.deleted_at IS NULL
+    `;
+    const params: any[] = [];
+
+    if (startDate && endDate) {
+      query += ` AND DATE(s.created_at) BETWEEN ? AND ?`;
+      params.push(startDate, endDate);
+    }
+
+    query += ` GROUP BY mi.menu_item_id ORDER BY total_quantity DESC`;
+
+    const [rows]: any = await pool.execute(query, params);
+    return successResponse(res, rows);
+  } catch (error) {
+    console.error('Product Performance Report Error:', error);
+    return errorResponse(res, 'Failed to fetch product performance report', 500, error);
+  }
+};
