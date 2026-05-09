@@ -301,3 +301,21 @@ export const updatePurchaseOrder = async (req: Request, res: Response) => {
     connection.release();
   }
 };
+export const deletePurchaseOrder = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    
+    // Check if received (cannot delete if already received/inventoried without reversal)
+    const [orders]: any = await pool.execute('SELECT status FROM purchase_orders WHERE purchase_id = ?', [id]);
+    if (orders.length === 0) return errorResponse(res, 'PO not found', 404);
+    
+    if (orders[0].status === 'received') {
+      return errorResponse(res, 'Cannot delete a received purchase order. Please reverse it first.', 400);
+    }
+
+    await pool.execute('UPDATE purchase_orders SET deleted_at = CURRENT_TIMESTAMP WHERE purchase_id = ?', [id]);
+    return successResponse(res, null, 'Purchase order deleted successfully');
+  } catch (error) {
+    return errorResponse(res, 'Failed to delete purchase order', 500, error);
+  }
+};

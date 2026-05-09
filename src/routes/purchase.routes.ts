@@ -4,7 +4,8 @@ import {
   getPurchaseOrderById, 
   createPurchaseOrder, 
   receivePurchaseOrder,
-  updatePurchaseOrder 
+  updatePurchaseOrder,
+  deletePurchaseOrder 
 } from '../controllers/purchase.controller';
 import { authMiddleware, authorize } from '../middleware/auth.middleware';
 
@@ -16,6 +17,8 @@ router.get('/', getPurchaseOrders);
 router.get('/:id', getPurchaseOrderById);
 router.post('/', authorize(['super_admin', 'manager', 'inventory_controller']), createPurchaseOrder);
 router.put('/:id', authorize(['super_admin', 'manager']), updatePurchaseOrder);
-router.post('/:id/receive', authorize(['super_admin', 'inventory_controller']), receivePurchaseOrder);
+router.post('/:id/receive', authorize(['super_admin', 'manager', 'inventory_controller']), receivePurchaseOrder);
+
+router.delete('/:id', authorize(['super_admin', 'manager']), deletePurchaseOrder);
 
 export default router;
