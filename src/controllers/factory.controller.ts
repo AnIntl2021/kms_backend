@@ -10,19 +10,26 @@ export const produceSandwiches = async (req: Request, res: Response) => {
     const admin_id = (req as any).user.admin_id;
 
     const [ingredients]: any = await connection.execute(
-      'SELECT inventory_item_id, quantity FROM menu_item_ingredients WHERE menu_item_id = ?',
+      `SELECT mii.inventory_item_id, mii.quantity, mii.package_id, ip.multiplier 
+       FROM menu_item_ingredients mii 
+       LEFT JOIN inventory_item_packages ip ON mii.package_id = ip.package_id 
+       WHERE mii.menu_item_id = ?`,
       [menu_item_id]
     );
 
     for (const ing of ingredients) {
-      const required = Number(ing.quantity) * Number(quantity);
+      const multiplier = Number(ing.multiplier || 1);
+      const required = Number(ing.quantity) * Number(quantity) * multiplier;
+      
       const [stock]: any = await connection.execute(
         'SELECT current_stock, name_en FROM inventory_items WHERE inventory_item_id = ? FOR UPDATE',
         [ing.inventory_item_id]
       );
-      if (stock[0].current_stock < required) {
-        throw new Error(`Insufficient ${stock[0].name_en}. Need ${required}, have ${stock[0].current_stock}`);
+      
+      if (!stock[0] || stock[0].current_stock < required) {
+        throw new Error(`Insufficient ${stock[0]?.name_en || 'Ingredient'}. Need ${required}, have ${stock[0]?.current_stock || 0}`);
       }
+      
       await connection.execute(
         'UPDATE inventory_items SET current_stock = current_stock - ? WHERE inventory_item_id = ?',
         [required, ing.inventory_item_id]

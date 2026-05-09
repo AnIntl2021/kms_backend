@@ -224,17 +224,16 @@ export const getPurchaseReport = async (req: Request, res: Response) => {
 
 export const getProductPerformanceReport = async (req: Request, res: Response) => {
   try {
-    const { startDate, endDate } = req.query;
+    const { startDate, endDate, vendor_id, branch_id, salesman_id } = req.query;
     let query = `
       SELECT 
-        mi.menu_item_id,
-        mi.name_en as product_name,
-        mi.name_ar as product_name_ar,
-        mi.category,
-        COALESCE(SUM(soi.quantity), 0) as total_quantity,
-        COALESCE(SUM(soi.quantity * soi.price), 0) as total_revenue,
-        COALESCE(SUM(soi.quantity * COALESCE(mi.cost_price, 0)), 0) as total_cost,
-        COALESCE((SUM(soi.quantity * soi.price) - SUM(soi.quantity * COALESCE(mi.cost_price, 0))), 0) as total_profit
+        mi.name_en AS product_name,
+        mi.name_ar AS product_name_ar,
+        mi.category AS product_category,
+        SUM(soi.quantity) AS total_quantity,
+        SUM(soi.quantity * soi.price) AS total_revenue,
+        SUM(soi.quantity * mi.cost_price) AS total_cost,
+        (SUM(soi.quantity * soi.price) - SUM(soi.quantity * mi.cost_price)) AS total_profit
       FROM sales_order_items soi
       JOIN sales_orders s ON soi.sale_id = s.sale_id
       JOIN menu_items mi ON soi.menu_item_id = mi.menu_item_id
@@ -245,6 +244,18 @@ export const getProductPerformanceReport = async (req: Request, res: Response) =
     if (startDate && endDate) {
       query += ` AND DATE(s.created_at) BETWEEN ? AND ?`;
       params.push(startDate, endDate);
+    }
+    if (vendor_id) {
+      query += ` AND s.vendor_id = ?`;
+      params.push(vendor_id);
+    }
+    if (branch_id) {
+      query += ` AND s.branch_id = ?`;
+      params.push(branch_id);
+    }
+    if (salesman_id) {
+      query += ` AND s.salesman_id = ?`;
+      params.push(salesman_id);
     }
 
     query += ` GROUP BY mi.menu_item_id ORDER BY total_quantity DESC`;
