@@ -53,9 +53,9 @@ export const createInventoryItem = async (req: any, res: Response) => {
     if (packages && Array.isArray(packages)) {
       for (const pkg of packages) {
         await connection.execute(
-          `INSERT INTO inventory_item_packages (inventory_item_id, name_en, name_ar, multiplier, base_price) 
-           VALUES (?, ?, ?, ?, ?)`,
-          [itemId, pkg.name_en, pkg.name_en, pkg.multiplier || 1.0, cost_price || 0]
+          `INSERT INTO inventory_item_packages (inventory_item_id, name_en, name_ar, multiplier, parent_name, base_price) 
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [itemId, pkg.name_en, pkg.name_en, pkg.multiplier || 1.0, pkg.parent_name || null, cost_price || 0]
         );
       }
     }
@@ -126,14 +126,14 @@ export const updateInventoryItem = async (req: any, res: Response) => {
         if (pkg.id) {
           // Update existing
           await connection.execute(
-            `UPDATE inventory_item_packages SET name_en = ?, name_ar = ?, multiplier = ?, base_price = ?, updated_at = CURRENT_TIMESTAMP WHERE package_id = ?`,
-            [pkg.name_en, pkg.name_en, pkg.multiplier || 1.0, cost_price || 0, pkg.id]
+            `UPDATE inventory_item_packages SET name_en = ?, name_ar = ?, multiplier = ?, parent_name = ?, base_price = ?, updated_at = CURRENT_TIMESTAMP WHERE package_id = ?`,
+            [pkg.name_en, pkg.name_en, pkg.multiplier || 1.0, pkg.parent_name || null, cost_price || 0, pkg.id]
           );
         } else {
           // Insert new
           await connection.execute(
-            `INSERT INTO inventory_item_packages (inventory_item_id, name_en, name_ar, multiplier, base_price) VALUES (?, ?, ?, ?, ?)`,
-            [id, pkg.name_en, pkg.name_en, pkg.multiplier || 1.0, cost_price || 0]
+            `INSERT INTO inventory_item_packages (inventory_item_id, name_en, name_ar, multiplier, parent_name, base_price) VALUES (?, ?, ?, ?, ?, ?)`,
+            [id, pkg.name_en, pkg.name_en, pkg.multiplier || 1.0, pkg.parent_name || null, cost_price || 0]
           );
         }
       }
