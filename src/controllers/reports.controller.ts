@@ -8,9 +8,17 @@ export const getSalesReport = async (req: Request, res: Response) => {
     let query = `
       SELECT s.*, 
       IFNULL(v.name_en, s.customer_name) as vendor_name, 
-      b.name_en as branch_name,
+      IFNULL(pb.name_en, 'Main') as branch_name,
+      IFNULL(sm.name_en, 'N/A') as salesman_name,
       DATE_FORMAT(s.created_at, '%Y-%m-%d') as report_date,
       IFNULL((SELECT SUM(total_credit_amount) FROM sales_returns WHERE sale_id = s.sale_id), 0) as returns_amount,
+      IFNULL((
+        SELECT SUM(ri.quantity * COALESCE(mi.cost_price, 0)) 
+        FROM sales_return_items ri 
+        JOIN menu_items mi ON ri.menu_item_id = mi.menu_item_id
+        JOIN sales_returns sr ON ri.return_id = sr.return_id
+        WHERE sr.sale_id = s.sale_id
+      ), 0) as returns_cost,
       IFNULL((
         SELECT SUM(soi.quantity * COALESCE(mi.cost_price, 0)) 
         FROM sales_order_items soi 
@@ -19,7 +27,8 @@ export const getSalesReport = async (req: Request, res: Response) => {
       ), 0) as total_cost
       FROM sales_orders s
       LEFT JOIN vendors v ON s.vendor_id = v.vendor_id
-      LEFT JOIN branches b ON s.branch_id = b.branch_id
+      LEFT JOIN partner_branches pb ON s.branch_id = pb.branch_id
+      LEFT JOIN salesmen sm ON s.salesman_id = sm.salesman_id
       WHERE s.deleted_at IS NULL
     `;
     const params: any[] = [];
@@ -132,7 +141,13 @@ export const getAnalyticsSummary = async (req: Request, res: Response) => {
           FROM sales_order_items soi
           LEFT JOIN menu_items mi ON soi.menu_item_id = mi.menu_item_id
           WHERE soi.sale_id = s.sale_id
-        ) - IFNULL((SELECT SUM(total_credit_amount) FROM sales_returns WHERE sale_id = s.sale_id), 0)) as profit
+        ) - IFNULL((
+          SELECT SUM(ri.quantity * COALESCE(mi.cost_price, 0)) 
+          FROM sales_return_items ri 
+          JOIN menu_items mi ON ri.menu_item_id = mi.menu_item_id
+          JOIN sales_returns sr ON ri.return_id = sr.return_id
+          WHERE sr.sale_id = s.sale_id
+        ), 0)) as profit
       FROM sales_orders s
       WHERE s.deleted_at IS NULL ${dateFilter} ${vendorFilter}
       GROUP BY date
@@ -225,45 +240,66 @@ export const getPurchaseReport = async (req: Request, res: Response) => {
 export const getProductPerformanceReport = async (req: Request, res: Response) => {
   try {
     const { startDate, endDate, vendor_id, branch_id, salesman_id } = req.query;
+    
+    // 🛡️ SALES-CENTRIC PERFORMANCE ORACLE
+    // We start from ACTUAL sales (soi) to ensure we only report on menus that are doing business
     let query = `
       SELECT 
-        mi.name_en AS product_name,
-        mi.name_ar AS product_name_ar,
-        mi.category AS product_category,
-        SUM(soi.quantity) AS total_quantity,
-        SUM(soi.quantity * soi.price) AS total_revenue,
+        mi.menu_item_id,
+        COALESCE(mi.name_en, 'Unnamed Product') as name_en,
+        COALESCE(mi.name_ar, 'منتج غير مسمى') as name_ar,
+        COALESCE(mi.category, 'General') as category,
+        SUM(soi.quantity) AS total_sold,
+        SUM(soi.quantity * soi.price) AS revenue,
         SUM(soi.quantity * mi.cost_price) AS total_cost,
-        (SUM(soi.quantity * soi.price) - SUM(soi.quantity * mi.cost_price)) AS total_profit
+        COALESCE(
+          (SELECT SUM(total_credit_amount) 
+           FROM sales_returns sr 
+           JOIN sales_return_items sri ON sr.return_id = sri.return_id
+           WHERE sri.menu_item_id = mi.menu_item_id
+           ${startDate && endDate ? 'AND sr.return_date BETWEEN ? AND ?' : ''}
+          ), 0
+        ) as returns_loss,
+        COALESCE(
+          (SELECT SUM(quantity) 
+           FROM sales_returns sr 
+           JOIN sales_return_items sri ON sr.return_id = sri.return_id
+           WHERE sri.menu_item_id = mi.menu_item_id
+           ${startDate && endDate ? 'AND sr.return_date BETWEEN ? AND ?' : ''}
+          ), 0
+        ) as returns_qty
       FROM sales_order_items soi
-      JOIN sales_orders s ON soi.sale_id = s.sale_id
+      JOIN sales_orders s ON soi.sale_id = s.sale_id AND s.deleted_at IS NULL
       JOIN menu_items mi ON soi.menu_item_id = mi.menu_item_id
-      WHERE s.deleted_at IS NULL
+      WHERE 1=1
     `;
     const params: any[] = [];
-
     if (startDate && endDate) {
+      params.push(startDate, endDate); // For return subqueries
+      params.push(startDate, endDate); // For return subqueries (qty)
       query += ` AND DATE(s.created_at) BETWEEN ? AND ?`;
       params.push(startDate, endDate);
     }
-    if (vendor_id) {
-      query += ` AND s.vendor_id = ?`;
-      params.push(vendor_id);
-    }
-    if (branch_id) {
-      query += ` AND s.branch_id = ?`;
-      params.push(branch_id);
-    }
-    if (salesman_id) {
-      query += ` AND s.salesman_id = ?`;
-      params.push(salesman_id);
-    }
+    if (vendor_id) { query += ` AND s.vendor_id = ?`; params.push(vendor_id); }
+    if (branch_id) { query += ` AND s.branch_id = ?`; params.push(branch_id); }
+    if (salesman_id) { query += ` AND s.salesman_id = ?`; params.push(salesman_id); }
 
-    query += ` GROUP BY mi.menu_item_id ORDER BY total_quantity DESC`;
+    query += ` GROUP BY mi.menu_item_id ORDER BY total_sold DESC`;
 
     const [rows]: any = await pool.execute(query, params);
-    return successResponse(res, rows);
+
+    // 🚀 WOW ENRICHMENT
+    const totalRevenue = rows.reduce((acc: number, r: any) => acc + Number(r.revenue), 0);
+    const enrichedRows = rows.map((r: any) => ({
+      ...r,
+      net_profit: (Number(r.revenue) - Number(r.total_cost) - Number(r.returns_loss)).toFixed(3),
+      contribution: totalRevenue > 0 ? ((Number(r.revenue) / totalRevenue) * 100).toFixed(1) : 0,
+      return_rate: r.total_sold > 0 ? ((Number(r.returns_qty) / Number(r.total_sold)) * 100).toFixed(1) : 0
+    }));
+
+    return successResponse(res, enrichedRows);
   } catch (error) {
-    console.error('Product Performance Report Error:', error);
+    console.error('Product Performance Sales-Centric Error:', error);
     return errorResponse(res, 'Failed to fetch product performance report', 500, error);
   }
 };

@@ -139,8 +139,23 @@ export const processReturn = async (req: Request, res: Response) => {
     const { sale_id, vendor_id, branch_id, items, reason, salesman_id } = req.body;
     const admin_id = (req as any).user.admin_id;
 
+    // 🛡️ FINANCIAL ACCURACY: Fetch original order's discount to ensure return credit is correct
+    let discountFactor = 1.0;
+    if (sale_id) {
+      const [originalOrder]: any = await connection.execute('SELECT discount_percentage FROM sales_orders WHERE sale_id = ?', [sale_id]);
+      if (originalOrder.length > 0) {
+        discountFactor = (100 - Number(originalOrder[0].discount_percentage || 0)) / 100;
+      }
+    } else if (vendor_id) {
+      // Fallback: Use standard 25% for partners if no specific order is linked (rare)
+      discountFactor = 0.75;
+    }
+
     let total_credit = 0;
-    items.forEach((i: any) => total_credit += (Number(i.quantity) * Number(i.unit_price)));
+    items.forEach((i: any) => {
+      const itemPrice = Number(i.price || i.unit_price || 0);
+      total_credit += (Number(i.quantity) * itemPrice * discountFactor);
+    });
 
     const [returnRes]: any = await connection.execute(
       'INSERT INTO sales_returns (sale_id, vendor_id, branch_id, reason, total_credit_amount, admin_id, salesman_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -291,8 +306,25 @@ export const updateReturn = async (req: Request, res: Response) => {
     await connection.execute('DELETE FROM wastage WHERE return_id = ?', [return_id]);
 
     // 2. Recalculate and Update Main Return Record
+    // 🛡️ FINANCIAL ACCURACY: Fetch original order's discount
+    let discountFactor = 1.0;
+    const [retData]: any = await connection.execute('SELECT sale_id, vendor_id FROM sales_returns WHERE return_id = ?', [return_id]);
+    if (retData.length > 0) {
+      if (retData[0].sale_id) {
+        const [originalOrder]: any = await connection.execute('SELECT discount_percentage FROM sales_orders WHERE sale_id = ?', [retData[0].sale_id]);
+        if (originalOrder.length > 0) {
+          discountFactor = (100 - Number(originalOrder[0].discount_percentage || 0)) / 100;
+        }
+      } else if (retData[0].vendor_id) {
+        discountFactor = 0.75;
+      }
+    }
+
     let total_credit = 0;
-    items.forEach((i: any) => total_credit += (Number(i.quantity) * Number(i.unit_price || i.price)));
+    items.forEach((i: any) => {
+      const itemPrice = Number(i.price || i.unit_price || 0);
+      total_credit += (Number(i.quantity) * itemPrice * discountFactor);
+    });
 
     await connection.execute(
       'UPDATE sales_returns SET reason = ?, salesman_id = ?, total_credit_amount = ? WHERE return_id = ?',
