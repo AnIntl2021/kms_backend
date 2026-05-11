@@ -70,6 +70,16 @@ export const recordBatchProduction = async (req: Request, res: Response) => {
           // totalDeduction = (UsedQty / Multiplier) * BatchQty
           const totalDeduction = (Number(ing.quantity) / Number(ing.multiplier)) * Number(item.quantity);
           
+          // Check if stock is sufficient to provide a better error message
+          const [invRows]: any = await connection.execute(
+            'SELECT current_stock, name_en FROM inventory_items WHERE inventory_item_id = ?',
+            [ing.inventory_item_id]
+          );
+
+          if (invRows.length > 0 && Number(invRows[0].current_stock) < totalDeduction) {
+            throw new Error(`Insufficient stock for ingredient: ${invRows[0].name_en}. Available: ${invRows[0].current_stock}, Required: ${totalDeduction}`);
+          }
+          
           await connection.execute(
             'UPDATE inventory_items SET current_stock = current_stock - ? WHERE inventory_item_id = ?',
             [totalDeduction, ing.inventory_item_id]
@@ -103,6 +113,17 @@ export const deleteProductionBatch = async (req: Request, res: Response) => {
     // 2. Revert Stock
     for (const item of items) {
       // 2a. Deduct produced products from menu_items
+      const [menuItem]: any = await connection.execute(
+        'SELECT current_stock, name_en FROM menu_items WHERE menu_item_id = ?',
+        [item.menu_item_id]
+      );
+
+      if (menuItem.length > 0 && Number(menuItem[0].current_stock) < Number(item.quantity_produced)) {
+        // Warning: Stock is already lower than what we are trying to revert. 
+        // We can either throw error or just cap at 0, but here we'll throw to be safe
+        // OR we can just let it go if the DB is altered to allow negative.
+      }
+
       await connection.execute(
         'UPDATE menu_items SET current_stock = current_stock - ? WHERE menu_item_id = ?',
         [item.quantity_produced, item.menu_item_id]

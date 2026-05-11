@@ -363,7 +363,13 @@ export const getReturns = async (req: Request, res: Response) => {
       SELECT 
         r.return_id, r.sale_id, r.total_credit_amount, r.reason, r.created_at,
         v.name_en as client_name,
-        pb.name_en as branch_name
+        v.name_ar as client_name_ar,
+        pb.name_en as branch_name,
+        pb.name_ar as branch_name_ar,
+        (SELECT SUM(ri.quantity * mi.cost_price) 
+         FROM sales_return_items ri 
+         JOIN menu_items mi ON ri.menu_item_id = mi.menu_item_id 
+         WHERE ri.return_id = r.return_id) as wastage_loss
       FROM sales_returns r
       LEFT JOIN vendors v ON r.vendor_id = v.vendor_id
       LEFT JOIN partner_branches pb ON r.branch_id = pb.branch_id
@@ -372,6 +378,7 @@ export const getReturns = async (req: Request, res: Response) => {
     `);
     return successResponse(res, returns);
   } catch (error) {
+    console.error('getReturns Error:', error);
     return errorResponse(res, 'Failed to fetch returns history', 500, error);
   }
 };
