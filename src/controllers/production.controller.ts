@@ -67,8 +67,8 @@ export const recordBatchProduction = async (req: Request, res: Response) => {
         );
         for (const ing of ingredients) {
           // If 1 Packet = 10 Pieces, then 1 Piece = (1/10) Packets.
-          // totalDeduction = (UsedQty / Multiplier) * BatchQty
-          const totalDeduction = (Number(ing.quantity) / Number(ing.multiplier)) * Number(item.quantity);
+          // Formula: totalDeduction = (Quantity * Multiplier) * BatchQty
+          const totalDeduction = (Number(ing.quantity) * Number(ing.multiplier)) * Number(item.quantity);
           
           // Check if stock is sufficient to provide a better error message
           const [invRows]: any = await connection.execute(
@@ -142,7 +142,7 @@ export const deleteProductionBatch = async (req: Request, res: Response) => {
       );
 
       for (const ing of ingredients) {
-        const totalRestoration = (Number(ing.ingredient_qty) / Number(ing.multiplier)) * Number(item.quantity_produced);
+        const totalRestoration = (Number(ing.ingredient_qty) * Number(ing.multiplier)) * Number(item.quantity_produced);
         
         // Restore to global stock
         await connection.execute(
