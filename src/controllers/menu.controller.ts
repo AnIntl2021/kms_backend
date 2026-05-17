@@ -61,9 +61,11 @@ export const createMenuItem = async (req: Request, res: Response) => {
 
     const image_url = req.file ? `/uploads/menu/${req.file.filename}` : null;
 
+    const yield_quantity = Number(req.body.yield_quantity || 1.000);
+
     // 1. Create Menu Item
     const [result]: any = await connection.execute(
-      'INSERT INTO menu_items (category_id, name_en, name_ar, barcode, price, unit_en, unit_ar, cost_price, type, description_en, description_ar, image_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO menu_items (category_id, name_en, name_ar, barcode, price, unit_en, unit_ar, cost_price, type, description_en, description_ar, image_url, yield_quantity) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         category_id || null, 
         name_en, 
@@ -76,7 +78,8 @@ export const createMenuItem = async (req: Request, res: Response) => {
         type || 'selling', 
         description_en || null, 
         description_ar || null, 
-        image_url
+        image_url,
+        yield_quantity
       ]
     );
     const menu_item_id = result.insertId;
@@ -132,6 +135,8 @@ export const updateMenuItem = async (req: Request, res: Response) => {
 
     const image_url = req.file ? `/uploads/menu/${req.file.filename}` : existing[0].image_url;
 
+    const yield_quantity = Number(req.body.yield_quantity || 1.000);
+
     // 2. Update Menu Item Header
     await connection.execute(
       `UPDATE menu_items SET 
@@ -147,9 +152,10 @@ export const updateMenuItem = async (req: Request, res: Response) => {
         description_en = ?, 
         description_ar = ?, 
         image_url = ?,
-        status = ?
+        status = ?,
+        yield_quantity = ?
       WHERE menu_item_id = ?`,
-      [category_id, name_en, name_ar, barcode || null, price, unit_en || 'piece', unit_ar || 'حبة', cost_price || 0, type || 'selling', description_en || null, description_ar || null, image_url, status || 'available', id]
+      [category_id, name_en, name_ar, barcode || null, price, unit_en || 'piece', unit_ar || 'حبة', cost_price || 0, type || 'selling', description_en || null, description_ar || null, image_url, status || 'available', yield_quantity, id]
     );
 
     // 3. Update Ingredients (Delete and Re-insert)
