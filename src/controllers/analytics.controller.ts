@@ -13,14 +13,16 @@ export const getStoreForecasting = async (req: Request, res: Response) => {
         (
           SELECT SUM(w.quantity) 
           FROM wastage w 
-          WHERE w.vendor_id = v.vendor_id 
+          LEFT JOIN sales_returns r ON w.return_id = r.return_id
+          WHERE (w.vendor_id = v.vendor_id OR r.vendor_id = v.vendor_id)
           AND w.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
         ) as recent_wastage_units,
         (
           SELECT SUM(w.quantity * COALESCE(mi.cost_price, 0)) 
           FROM wastage w 
           JOIN menu_items mi ON w.menu_item_id = mi.menu_item_id
-          WHERE w.vendor_id = v.vendor_id 
+          LEFT JOIN sales_returns r ON w.return_id = r.return_id
+          WHERE (w.vendor_id = v.vendor_id OR r.vendor_id = v.vendor_id)
           AND w.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
         ) as recent_loss_kwd,
         (
@@ -62,6 +64,9 @@ export const getStoreForecasting = async (req: Request, res: Response) => {
 
         return {
             ...store,
+            recent_sales: salesKwd,
+            recent_wastage_units: wasteUnits,
+            recent_loss_kwd: lossKwd,
             loss_kwd: lossKwd,
             recommendation,
             actionColor,

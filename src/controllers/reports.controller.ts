@@ -99,7 +99,8 @@ export const getWastageReport = async (req: Request, res: Response) => {
       LEFT JOIN menu_items mi ON w.menu_item_id = mi.menu_item_id
       LEFT JOIN products p ON w.product_id = p.product_id
       LEFT JOIN inventory_items ii ON w.inventory_item_id = ii.inventory_item_id
-      LEFT JOIN vendors v ON w.vendor_id = v.vendor_id
+      LEFT JOIN sales_returns r ON w.return_id = r.return_id
+      LEFT JOIN vendors v ON COALESCE(w.vendor_id, r.vendor_id) = v.vendor_id
       WHERE 1=1
     `;
     const params: any[] = [];
