@@ -4,7 +4,7 @@ import { successResponse, errorResponse } from '../utils/response';
 
 export const getStoreForecasting = async (req: Request, res: Response) => {
   try {
-    // 1. Get Sales vs Wastage with Price/Financial Data
+    // 1. Get Sales vs Wastage with Price/Financial Data & Sold Units count
     const [stats]: any = await pool.execute(`
       SELECT 
         v.vendor_id, 
@@ -31,36 +31,63 @@ export const getStoreForecasting = async (req: Request, res: Response) => {
           WHERE so_inner.vendor_id = v.vendor_id 
           AND so_inner.dispatch_status IN ('delivered', 'dispatched', 'in_transit')
           AND so_inner.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-        ) as recent_sales
+        ) as recent_sales,
+        (
+          SELECT SUM(soi.quantity)
+          FROM sales_order_items soi
+          JOIN sales_orders s ON soi.sale_id = s.sale_id
+          WHERE s.vendor_id = v.vendor_id
+          AND s.dispatch_status IN ('delivered', 'dispatched', 'in_transit')
+          AND s.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+        ) as recent_sold_units
       FROM vendors v
       LEFT JOIN sales_orders so ON v.vendor_id = so.vendor_id
       WHERE v.deleted_at IS NULL
       GROUP BY v.vendor_id
     `);
 
-    // 2. Generate forecasting logic with Financial Intelligence
+    // 2. Generate forecasting logic with advanced statistical metrics
     const forecasting = stats.map((store: any) => {
         const wasteUnits = parseFloat(store.recent_wastage_units || '0');
         const salesKwd = parseFloat(store.recent_sales || '0');
-        // 🛡️ FINANCIAL ACCURACY: Calculate loss based on COST PRICE, not Selling Price
         const lossKwd = parseFloat(store.recent_loss_kwd || '0'); 
+        const soldUnits = parseFloat(store.recent_sold_units || '0');
+
+        const dailySold = parseFloat((soldUnits / 7).toFixed(1));
+        const dailyWasted = parseFloat((wasteUnits / 7).toFixed(1));
         
+        // Return rate based on total units routed to the customer
+        const totalRouted = soldUnits + wasteUnits;
+        const returnRate = totalRouted > 0 ? parseFloat(((wasteUnits / totalRouted) * 100).toFixed(1)) : 0;
+
         let recommendation = 'STABLE';
         let actionColor = 'emerald';
         let adjustment = 0;
         let priority = 'Low';
+        let optimalNextDispatch = Math.round(dailySold);
 
-        if (lossKwd > 10 || wasteUnits > (salesKwd * 0.2)) { // high financial leak
-            recommendation = 'REDUCE PRODUCTION';
+        if (returnRate > 15 || lossKwd > 15) { // High return leak
+            recommendation = 'REDUCE DISPATCH';
             actionColor = 'rose';
-            adjustment = -20;
+            adjustment = -Math.round(returnRate);
             priority = 'Critical';
-        } else if (wasteUnits < 5 && salesKwd > 50) { // high profit opportunity
-            recommendation = 'EXPAND INVENTORY';
-            actionColor = 'amber';
-            adjustment = +25;
-            priority = 'High Profit';
+            optimalNextDispatch = Math.max(0, Math.round(dailySold * 0.75));
+        } else if (returnRate < 5 && dailySold > 8) { // High growth/sales opportunity
+            recommendation = 'EXPAND SUPPLY';
+            actionColor = 'emerald';
+            adjustment = 20;
+            priority = 'Growth Option';
+            optimalNextDispatch = Math.round(dailySold * 1.25);
+        } else {
+            recommendation = 'MAINTAIN';
+            actionColor = 'blue';
+            adjustment = 0;
+            priority = 'Stable';
+            optimalNextDispatch = Math.round(dailySold);
         }
+
+        // Expected cost savings if recommendation is applied
+        const expectedSavings = recommendation === 'REDUCE DISPATCH' ? parseFloat((lossKwd * 0.8).toFixed(3)) : 0;
 
         return {
             ...store,
@@ -68,6 +95,12 @@ export const getStoreForecasting = async (req: Request, res: Response) => {
             recent_wastage_units: wasteUnits,
             recent_loss_kwd: lossKwd,
             loss_kwd: lossKwd,
+            recent_sold_units: soldUnits,
+            sales_velocity: dailySold,
+            wastage_velocity: dailyWasted,
+            return_rate: returnRate,
+            optimal_dispatch: optimalNextDispatch,
+            expected_savings: expectedSavings,
             recommendation,
             actionColor,
             adjustmentScore: adjustment,
