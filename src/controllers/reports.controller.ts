@@ -378,3 +378,138 @@ export const getProductPerformanceReport = async (req: Request, res: Response) =
     return errorResponse(res, 'Failed to fetch product performance report', 500, error);
   }
 };
+
+export const getFoodCostReport = async (req: Request, res: Response) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const today = new Date().toISOString().split('T')[0];
+    
+    const start = startDate ? String(startDate) : new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+    const end = endDate ? String(endDate) : today;
+
+    // 1. Fetch active inventory items
+    const [items]: any = await pool.execute(`
+      SELECT ii.inventory_item_id, ii.name_en, ii.name_ar, ii.sku, ii.current_stock, ii.min_stock_level, ii.unit_en, ii.unit_ar, ii.cost_price,
+      c.name_en as category_name
+      FROM inventory_items ii
+      LEFT JOIN categories c ON ii.category_id = c.category_id
+      WHERE ii.deleted_at IS NULL
+      ORDER BY c.name_en ASC, ii.name_en ASC
+    `);
+
+    // 2. Fetch receiving quantities for all items in date range in bulk
+    const [receivingRows]: any = await pool.execute(`
+      SELECT poi.inventory_item_id, SUM(poi.quantity) as total_qty
+      FROM purchase_order_items poi
+      JOIN purchase_orders po ON poi.purchase_id = po.purchase_id
+      WHERE po.status = 'received'
+        AND DATE(po.received_at) BETWEEN ? AND ?
+      GROUP BY poi.inventory_item_id
+    `, [start, end]);
+    const receivingMap = new Map(receivingRows.map((r: any) => [r.inventory_item_id, parseFloat(r.total_qty || 0)]));
+
+    // 3. Fetch wastage quantities in date range in bulk
+    const [wastageRows]: any = await pool.execute(`
+      SELECT w.inventory_item_id, SUM(w.quantity) as total_qty
+      FROM wastage w
+      WHERE w.deleted_at IS NULL
+        AND DATE(w.created_at) BETWEEN ? AND ?
+      GROUP BY w.inventory_item_id
+    `, [start, end]);
+    const wastageMap = new Map(wastageRows.map((r: any) => [r.inventory_item_id, parseFloat(r.total_qty || 0)]));
+
+    // 4. Fetch production usage in date range in bulk
+    const [productionRows]: any = await pool.execute(`
+      SELECT mii.inventory_item_id, SUM(pi.quantity_produced * mii.quantity * IFNULL(iip.multiplier, 1)) as total_qty
+      FROM production_items pi
+      JOIN production_logs pl ON pi.production_id = pl.production_id
+      JOIN menu_item_ingredients mii ON pi.menu_item_id = mii.menu_item_id
+      LEFT JOIN inventory_item_packages iip ON mii.package_id = iip.package_id
+      WHERE pl.deleted_at IS NULL
+        AND DATE(pl.production_date) BETWEEN ? AND ?
+      GROUP BY mii.inventory_item_id
+    `, [start, end]);
+    const productionMap = new Map(productionRows.map((r: any) => [r.inventory_item_id, parseFloat(r.total_qty || 0)]));
+
+    // 5. Fetch receiving since start in bulk (for opening stock back-calc)
+    const [recSinceStartRows]: any = await pool.execute(`
+      SELECT poi.inventory_item_id, SUM(poi.quantity) as total_qty
+      FROM purchase_order_items poi
+      JOIN purchase_orders po ON poi.purchase_id = po.purchase_id
+      WHERE po.status = 'received'
+        AND DATE(po.received_at) >= ?
+      GROUP BY poi.inventory_item_id
+    `, [start]);
+    const recSinceStartMap = new Map(recSinceStartRows.map((r: any) => [r.inventory_item_id, parseFloat(r.total_qty || 0)]));
+
+    // 6. Fetch wastage since start in bulk (for opening stock back-calc)
+    const [wasteSinceStartRows]: any = await pool.execute(`
+      SELECT w.inventory_item_id, SUM(w.quantity) as total_qty
+      FROM wastage w
+      WHERE w.deleted_at IS NULL
+        AND DATE(w.created_at) >= ?
+      GROUP BY w.inventory_item_id
+    `, [start]);
+    const wasteSinceStartMap = new Map(wasteSinceStartRows.map((r: any) => [r.inventory_item_id, parseFloat(r.total_qty || 0)]));
+
+    // 7. Fetch production usage since start in bulk (for opening stock back-calc)
+    const [prodSinceStartRows]: any = await pool.execute(`
+      SELECT mii.inventory_item_id, SUM(pi.quantity_produced * mii.quantity * IFNULL(iip.multiplier, 1)) as total_qty
+      FROM production_items pi
+      JOIN production_logs pl ON pi.production_id = pl.production_id
+      JOIN menu_item_ingredients mii ON pi.menu_item_id = mii.menu_item_id
+      LEFT JOIN inventory_item_packages iip ON mii.package_id = iip.package_id
+      WHERE pl.deleted_at IS NULL
+        AND DATE(pl.production_date) >= ?
+      GROUP BY mii.inventory_item_id
+    `, [start]);
+    const prodSinceStartMap = new Map(prodSinceStartRows.map((r: any) => [r.inventory_item_id, parseFloat(r.total_qty || 0)]));
+
+    // 8. Assemble report data
+    const reportData = items.map((item: any) => {
+      const itemId = item.inventory_item_id;
+      const receivingQty = receivingMap.get(itemId) || 0;
+      const wastageQty = wastageMap.get(itemId) || 0;
+      const productionQty = productionMap.get(itemId) || 0;
+
+      const recSinceStart = recSinceStartMap.get(itemId) || 0;
+      const wasteSinceStart = wasteSinceStartMap.get(itemId) || 0;
+      const prodSinceStart = prodSinceStartMap.get(itemId) || 0;
+
+      const openingStock = Math.max(0, parseFloat(item.current_stock) - recSinceStart + wasteSinceStart + prodSinceStart);
+
+      return {
+        inventory_item_id: item.inventory_item_id,
+        name_en: item.name_en,
+        name_ar: item.name_ar,
+        sku: item.sku,
+        unit_en: item.unit_en,
+        unit_ar: item.unit_ar,
+        cost_price: parseFloat(item.cost_price),
+        category_name: item.category_name,
+        opening_stock: openingStock,
+        receiving_stock: receivingQty,
+        wastage: wastageQty,
+        production_used: productionQty,
+        current_stock: parseFloat(item.current_stock)
+      };
+    });
+
+    const [salesRows]: any = await pool.execute(`
+      SELECT SUM(final_amount) as revenue
+      FROM sales_orders
+      WHERE deleted_at IS NULL
+        AND DATE(created_at) BETWEEN ? AND ?
+    `, [start, end]);
+    const salesRevenue = parseFloat(salesRows[0]?.revenue || 0);
+
+    return successResponse(res, {
+      items: reportData,
+      sales_revenue: salesRevenue
+    });
+  } catch (error) {
+    console.error('Food Cost Report Error:', error);
+    return errorResponse(res, 'Failed to fetch food cost report', 500, error);
+  }
+};
+

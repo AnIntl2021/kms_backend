@@ -1,5 +1,13 @@
 import { Router } from 'express';
-import { getSalesReport, getProductionReport, getWastageReport, getAnalyticsSummary, getPurchaseReport, getProductPerformanceReport } from '../controllers/reports.controller.js';
+import { 
+  getSalesReport, 
+  getProductionReport, 
+  getWastageReport, 
+  getAnalyticsSummary, 
+  getPurchaseReport, 
+  getProductPerformanceReport,
+  getFoodCostReport 
+} from '../controllers/reports.controller.js';
 import { authMiddleware } from '../middleware/auth.middleware.js';
 
 const router = Router();
@@ -10,5 +18,6 @@ router.get('/wastage', authMiddleware, getWastageReport);
 router.get('/purchase', authMiddleware, getPurchaseReport);
 router.get('/products', authMiddleware, getProductPerformanceReport);
 router.get('/analytics', authMiddleware, getAnalyticsSummary);
+router.get('/food-cost', authMiddleware, getFoodCostReport);
 
 export default router;
