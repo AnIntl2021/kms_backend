@@ -465,7 +465,41 @@ export const getFoodCostReport = async (req: Request, res: Response) => {
     `, [start]);
     const prodSinceStartMap = new Map(prodSinceStartRows.map((r: any) => [r.inventory_item_id, parseFloat(r.total_qty || 0)]));
 
-    // 8. Assemble report data
+    // 8. Fetch receiving AFTER end date (for closing stock back-calc)
+    const [recAfterEndRows]: any = await pool.execute(`
+      SELECT poi.inventory_item_id, SUM(poi.quantity) as total_qty
+      FROM purchase_order_items poi
+      JOIN purchase_orders po ON poi.purchase_id = po.purchase_id
+      WHERE po.status = 'received'
+        AND DATE(po.received_at) > ?
+      GROUP BY poi.inventory_item_id
+    `, [end]);
+    const recAfterEndMap = new Map(recAfterEndRows.map((r: any) => [r.inventory_item_id, parseFloat(r.total_qty || 0)]));
+
+    // 9. Fetch wastage AFTER end date (for closing stock back-calc)
+    const [wasteAfterEndRows]: any = await pool.execute(`
+      SELECT w.inventory_item_id, SUM(w.quantity) as total_qty
+      FROM wastage w
+      WHERE w.deleted_at IS NULL
+        AND DATE(w.created_at) > ?
+      GROUP BY w.inventory_item_id
+    `, [end]);
+    const wasteAfterEndMap = new Map(wasteAfterEndRows.map((r: any) => [r.inventory_item_id, parseFloat(r.total_qty || 0)]));
+
+    // 10. Fetch production usage AFTER end date (for closing stock back-calc)
+    const [prodAfterEndRows]: any = await pool.execute(`
+      SELECT mii.inventory_item_id, SUM(pi.quantity_produced * mii.quantity * IFNULL(iip.multiplier, 1)) as total_qty
+      FROM production_items pi
+      JOIN production_logs pl ON pi.production_id = pl.production_id
+      JOIN menu_item_ingredients mii ON pi.menu_item_id = mii.menu_item_id
+      LEFT JOIN inventory_item_packages iip ON mii.package_id = iip.package_id
+      WHERE pl.deleted_at IS NULL
+        AND DATE(pl.production_date) > ?
+      GROUP BY mii.inventory_item_id
+    `, [end]);
+    const prodAfterEndMap = new Map(prodAfterEndRows.map((r: any) => [r.inventory_item_id, parseFloat(r.total_qty || 0)]));
+
+    // 11. Assemble report data
     const reportData = items.map((item: any) => {
       const itemId = item.inventory_item_id;
       const receivingQty = receivingMap.get(itemId) || 0;
@@ -476,7 +510,17 @@ export const getFoodCostReport = async (req: Request, res: Response) => {
       const wasteSinceStart = wasteSinceStartMap.get(itemId) || 0;
       const prodSinceStart = prodSinceStartMap.get(itemId) || 0;
 
+      // Opening Stock = what stock was at the START of the period
+      // Back-calc: reverse everything that happened from startDate onwards
       const openingStock = Math.max(0, parseFloat(item.current_stock) - recSinceStart + wasteSinceStart + prodSinceStart);
+
+      const recAfterEnd = recAfterEndMap.get(itemId) || 0;
+      const wasteAfterEnd = wasteAfterEndMap.get(itemId) || 0;
+      const prodAfterEnd = prodAfterEndMap.get(itemId) || 0;
+
+      // Closing Stock = what stock was at the END of the period
+      // Back-calc: reverse everything that happened AFTER endDate
+      const closingStock = Math.max(0, parseFloat(item.current_stock) - recAfterEnd + wasteAfterEnd + prodAfterEnd);
 
       return {
         inventory_item_id: item.inventory_item_id,
@@ -491,9 +535,10 @@ export const getFoodCostReport = async (req: Request, res: Response) => {
         receiving_stock: receivingQty,
         wastage: wastageQty,
         production_used: productionQty,
-        current_stock: parseFloat(item.current_stock)
+        current_stock: closingStock   // now represents end-of-period stock, not live stock
       };
     });
+
 
     const [salesRows]: any = await pool.execute(`
       SELECT SUM(final_amount) as revenue
@@ -512,4 +557,70 @@ export const getFoodCostReport = async (req: Request, res: Response) => {
     return errorResponse(res, 'Failed to fetch food cost report', 500, error);
   }
 };
+
+export const getClientStatements = async (req: Request, res: Response) => {
+  try {
+    const { startDate, endDate, vendor_id, branch_id } = req.query;
+    
+    let query = `
+      SELECT s.*, 
+             v.name_en as client_name, v.name_ar as client_name_ar, v.email as client_email, v.phone as client_phone, v.address as client_address,
+             pb.name_en as branch_name, pb.name_ar as branch_name_ar,
+             DATE_FORMAT(s.created_at, '%Y-%m-%d') as report_date
+      FROM sales_orders s
+      JOIN vendors v ON s.vendor_id = v.vendor_id
+      LEFT JOIN partner_branches pb ON s.branch_id = pb.branch_id
+      WHERE s.deleted_at IS NULL AND v.type = 'client'
+    `;
+    const params: any[] = [];
+    
+    if (startDate && endDate) {
+      query += ` AND DATE(s.created_at) BETWEEN ? AND ?`;
+      params.push(startDate, endDate);
+    }
+    if (vendor_id) {
+      query += ` AND s.vendor_id = ?`;
+      params.push(vendor_id);
+    }
+    if (branch_id) {
+      if (branch_id === 'main') {
+        query += ` AND (s.branch_id IS NULL OR s.branch_id = 'main' OR s.branch_id = 0)`;
+      } else {
+        query += ` AND s.branch_id = ?`;
+        params.push(branch_id);
+      }
+    }
+    
+    query += ` ORDER BY s.created_at DESC, s.sale_id DESC`;
+    
+    const [orders]: any = await pool.execute(query, params);
+    
+    if (orders.length === 0) {
+      return successResponse(res, []);
+    }
+    
+    const orderIds = orders.map((o: any) => o.sale_id);
+    const placeholders = orderIds.map(() => '?').join(',');
+    
+    const [items]: any = await pool.execute(`
+      SELECT soi.*, mi.name_en, mi.name_ar
+      FROM sales_order_items soi
+      JOIN menu_items mi ON soi.menu_item_id = mi.menu_item_id
+      WHERE soi.sale_id IN (${placeholders})
+    `, orderIds);
+    
+    const ordersWithItems = orders.map((order: any) => {
+      return {
+        ...order,
+        items: items.filter((item: any) => item.sale_id === order.sale_id)
+      };
+    });
+    
+    return successResponse(res, ordersWithItems);
+  } catch (error) {
+    console.error('Client Statements Error:', error);
+    return errorResponse(res, 'Failed to fetch client statements', 500, error);
+  }
+};
+
 

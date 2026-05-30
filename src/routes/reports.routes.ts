@@ -6,7 +6,8 @@ import {
   getAnalyticsSummary, 
   getPurchaseReport, 
   getProductPerformanceReport,
-  getFoodCostReport 
+  getFoodCostReport,
+  getClientStatements
 } from '../controllers/reports.controller.js';
 import { authMiddleware } from '../middleware/auth.middleware.js';
 
@@ -19,5 +20,7 @@ router.get('/purchase', authMiddleware, getPurchaseReport);
 router.get('/products', authMiddleware, getProductPerformanceReport);
 router.get('/analytics', authMiddleware, getAnalyticsSummary);
 router.get('/food-cost', authMiddleware, getFoodCostReport);
+router.get('/client-statements', authMiddleware, getClientStatements);
+
 
 export default router;
