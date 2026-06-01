@@ -419,10 +419,14 @@ export const getReturnItems = async (req: Request, res: Response) => {
   try {
     const [items]: any = await pool.execute(`
       SELECT 
-        ri.menu_item_id, ri.quantity, ri.unit_price as price,
+        ri.menu_item_id, ri.quantity, 
+        (ri.unit_price * (100 - IFNULL(so.discount_percentage, 25)) / 100) as unit_price,
+        ri.unit_price as original_price,
         m.name_en, m.name_ar, m.barcode as item_code
       FROM sales_return_items ri
       LEFT JOIN menu_items m ON ri.menu_item_id = m.menu_item_id
+      LEFT JOIN sales_returns sr ON ri.return_id = sr.return_id
+      LEFT JOIN sales_orders so ON sr.sale_id = so.sale_id
       WHERE ri.return_id = ?
     `, [return_id]);
     return successResponse(res, items);
