@@ -136,7 +136,7 @@ export const processReturn = async (req: Request, res: Response) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    const { sale_id, vendor_id, branch_id, items, reason, salesman_id } = req.body;
+    const { sale_id, vendor_id, branch_id, items, reason, salesman_id, return_date } = req.body;
     const admin_id = (req as any).user.admin_id;
 
     // 🛡️ FINANCIAL ACCURACY: Fetch original order's discount to ensure return credit is correct
@@ -157,9 +157,11 @@ export const processReturn = async (req: Request, res: Response) => {
       total_credit += (Number(i.quantity) * itemPrice * discountFactor);
     });
 
+    const sanitizedReturnDate = return_date ? String(return_date).split('T')[0] : new Date().toISOString().split('T')[0];
+
     const [returnRes]: any = await connection.execute(
-      'INSERT INTO sales_returns (sale_id, vendor_id, branch_id, reason, total_credit_amount, admin_id, salesman_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [sale_id || null, vendor_id, branch_id && String(branch_id).trim().toLowerCase() === 'main' ? null : (branch_id || null), reason || 'Expired', total_credit, admin_id, salesman_id || null]
+      'INSERT INTO sales_returns (sale_id, vendor_id, branch_id, reason, total_credit_amount, admin_id, salesman_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [sale_id || null, vendor_id, branch_id && String(branch_id).trim().toLowerCase() === 'main' ? null : (branch_id || null), reason || 'Expired', total_credit, admin_id, salesman_id || null, sanitizedReturnDate]
     );
     const return_id = returnRes.insertId;
 
@@ -191,8 +193,8 @@ export const processReturn = async (req: Request, res: Response) => {
       );
 
       await connection.execute(
-        'INSERT INTO wastage (menu_item_id, return_id, quantity, reason_en, admin_id) VALUES (?, ?, ?, ?, ?)',
-        [item.menu_item_id || item.product_id, return_id, item.quantity, `Returned from Vendor: ${reason || 'Expired'}`, admin_id]
+        'INSERT INTO wastage (menu_item_id, return_id, quantity, reason_en, admin_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+        [item.menu_item_id || item.product_id, return_id, item.quantity, `Returned from Vendor: ${reason || 'Expired'}`, admin_id, sanitizedReturnDate]
       );
     }
 
@@ -295,7 +297,7 @@ export const updateSalesOrder = async (req: Request, res: Response) => {
 
 export const updateReturn = async (req: Request, res: Response) => {
   const { return_id } = req.params;
-  const { items, reason, salesman_id } = req.body;
+  const { items, reason, salesman_id, return_date } = req.body;
   const connection = await pool.getConnection();
 
   try {
@@ -308,7 +310,7 @@ export const updateReturn = async (req: Request, res: Response) => {
     // 2. Recalculate and Update Main Return Record
     // 🛡️ FINANCIAL ACCURACY: Fetch original order's discount
     let discountFactor = 1.0;
-    const [retData]: any = await connection.execute('SELECT sale_id, vendor_id FROM sales_returns WHERE return_id = ?', [return_id]);
+    const [retData]: any = await connection.execute('SELECT sale_id, vendor_id, created_at FROM sales_returns WHERE return_id = ?', [return_id]);
     if (retData.length > 0) {
       if (retData[0].sale_id) {
         const [originalOrder]: any = await connection.execute('SELECT discount_percentage FROM sales_orders WHERE sale_id = ?', [retData[0].sale_id]);
@@ -326,13 +328,17 @@ export const updateReturn = async (req: Request, res: Response) => {
       total_credit += (Number(i.quantity) * itemPrice * discountFactor);
     });
 
+    const sanitizedReturnDate = return_date ? String(return_date).split('T')[0] : null;
+
     await connection.execute(
-      'UPDATE sales_returns SET reason = ?, salesman_id = ?, total_credit_amount = ? WHERE return_id = ?',
-      [reason || 'Expired', salesman_id || null, total_credit, return_id]
+      `UPDATE sales_returns SET reason = ?, salesman_id = ?, total_credit_amount = ?${sanitizedReturnDate ? ', created_at = ?' : ''} WHERE return_id = ?`,
+      [reason || 'Expired', salesman_id || null, total_credit, ...(sanitizedReturnDate ? [sanitizedReturnDate] : []), return_id]
     );
 
     // 3. Insert New Corrected Items & Wastage
     const admin_id = (req as any).user.admin_id;
+    const finalDate = sanitizedReturnDate || (retData.length > 0 ? retData[0].created_at : new Date());
+
     for (const item of items) {
       if (Number(item.quantity) <= 0) continue;
 
@@ -342,8 +348,8 @@ export const updateReturn = async (req: Request, res: Response) => {
       );
 
       await connection.execute(
-        'INSERT INTO wastage (menu_item_id, return_id, quantity, reason_en, admin_id) VALUES (?, ?, ?, ?, ?)',
-        [item.menu_item_id || item.product_id, return_id, item.quantity, `Returned (Updated): ${reason || 'Expired'}`, admin_id]
+        'INSERT INTO wastage (menu_item_id, return_id, quantity, reason_en, admin_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+        [item.menu_item_id || item.product_id, return_id, item.quantity, `Returned (Updated): ${reason || 'Expired'}`, admin_id, finalDate]
       );
     }
 

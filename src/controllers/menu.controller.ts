@@ -12,7 +12,6 @@ export const getMenuItems = async (req: Request, res: Response) => {
       ORDER BY mi.sort_order ASC, mi.name_en ASC
     `);
     return successResponse(res, items);
-    return errorResponse(res, 'Failed to fetch menu items', 500, error);
   } catch (error) {
     console.error('getMenuItems Error:', error);
     return errorResponse(res, 'Failed to fetch menu items', 500, error);
@@ -87,8 +86,8 @@ export const createMenuItem = async (req: Request, res: Response) => {
     // 2. Add Ingredients (Recipe)
     if (ingredients && Array.isArray(ingredients)) {
       for (const ing of ingredients) {
-        let invId = null;
-        let subMenuId = null;
+        let invId: string | null = null;
+        let subMenuId: string | null = null;
         
         const rawId = String(ing.inventory_item_id || '');
         if (rawId.startsWith('pre-')) {
@@ -162,8 +161,8 @@ export const updateMenuItem = async (req: Request, res: Response) => {
     await connection.execute('DELETE FROM menu_item_ingredients WHERE menu_item_id = ?', [id]);
     if (ingredients && Array.isArray(ingredients)) {
       for (const ing of ingredients) {
-        let invId = null;
-        let subMenuId = null;
+        let invId: string | null = null;
+        let subMenuId: string | null = null;
         
         const rawId = String(ing.inventory_item_id || '');
         if (rawId.startsWith('pre-')) {

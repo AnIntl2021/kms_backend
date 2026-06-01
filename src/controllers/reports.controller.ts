@@ -506,17 +506,17 @@ export const getFoodCostReport = async (req: Request, res: Response) => {
       const wastageQty = wastageMap.get(itemId) || 0;
       const productionQty = productionMap.get(itemId) || 0;
 
-      const recSinceStart = recSinceStartMap.get(itemId) || 0;
-      const wasteSinceStart = wasteSinceStartMap.get(itemId) || 0;
-      const prodSinceStart = prodSinceStartMap.get(itemId) || 0;
+      const recSinceStart = Number(recSinceStartMap.get(itemId) || 0);
+      const wasteSinceStart = Number(wasteSinceStartMap.get(itemId) || 0);
+      const prodSinceStart = Number(prodSinceStartMap.get(itemId) || 0);
 
       // Opening Stock = what stock was at the START of the period
       // Back-calc: reverse everything that happened from startDate onwards
       const openingStock = Math.max(0, parseFloat(item.current_stock) - recSinceStart + wasteSinceStart + prodSinceStart);
 
-      const recAfterEnd = recAfterEndMap.get(itemId) || 0;
-      const wasteAfterEnd = wasteAfterEndMap.get(itemId) || 0;
-      const prodAfterEnd = prodAfterEndMap.get(itemId) || 0;
+      const recAfterEnd = Number(recAfterEndMap.get(itemId) || 0);
+      const wasteAfterEnd = Number(wasteAfterEndMap.get(itemId) || 0);
+      const prodAfterEnd = Number(prodAfterEndMap.get(itemId) || 0);
 
       // Closing Stock = what stock was at the END of the period
       // Back-calc: reverse everything that happened AFTER endDate
@@ -566,7 +566,9 @@ export const getClientStatements = async (req: Request, res: Response) => {
       SELECT s.*, 
              v.name_en as client_name, v.name_ar as client_name_ar, v.email as client_email, v.phone as client_phone, v.address as client_address,
              pb.name_en as branch_name, pb.name_ar as branch_name_ar,
-             DATE_FORMAT(s.created_at, '%Y-%m-%d') as report_date
+             DATE_FORMAT(s.created_at, '%Y-%m-%d') as report_date,
+             IFNULL((SELECT SUM(total_credit_amount) FROM sales_returns WHERE sale_id = s.sale_id), 0) as returns_amount,
+             IFNULL((SELECT SUM(sri.quantity) FROM sales_returns sr JOIN sales_return_items sri ON sr.return_id = sri.return_id WHERE sr.sale_id = s.sale_id), 0) as returns_qty
       FROM sales_orders s
       JOIN vendors v ON s.vendor_id = v.vendor_id
       LEFT JOIN partner_branches pb ON s.branch_id = pb.branch_id

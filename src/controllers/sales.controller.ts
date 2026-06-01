@@ -4,7 +4,8 @@ import { successResponse, errorResponse } from '../utils/response.js';
 
 export const getSales = async (req: Request, res: Response) => {
   try {
-    // 🤖 AUTO-SETTLEMENT ORACLE: Mark expired credit orders as 'paid'
+    // 🤖 AUTO-SETTLEMENT ORACLE: Temporarily disabled to allow manual overrides during testing.
+    /*
     await pool.execute(`
       UPDATE sales_orders 
       SET payment_status = 'paid' 
@@ -12,6 +13,7 @@ export const getSales = async (req: Request, res: Response) => {
       AND expiry_date <= CURRENT_DATE()
       AND deleted_at IS NULL
     `);
+    */
 
     const [rows]: any = await pool.execute(`
       SELECT s.*, 
