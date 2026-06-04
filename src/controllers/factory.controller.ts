@@ -147,8 +147,13 @@ export const processReturn = async (req: Request, res: Response) => {
         discountFactor = (100 - Number(originalOrder[0].discount_percentage || 0)) / 100;
       }
     } else if (vendor_id) {
-      // Fallback: Use standard 25% for partners if no specific order is linked (rare)
-      discountFactor = 0.75;
+      // Fallback: Check vendor name for Canteen to apply 35%, otherwise 25%
+      const [vendorInfo]: any = await connection.execute('SELECT name_en FROM vendors WHERE vendor_id = ?', [vendor_id]);
+      if (vendorInfo.length > 0 && vendorInfo[0].name_en.toLowerCase().includes('canteen')) {
+        discountFactor = 0.65;
+      } else {
+        discountFactor = 0.75;
+      }
     }
 
     let total_credit = 0;
@@ -318,7 +323,12 @@ export const updateReturn = async (req: Request, res: Response) => {
           discountFactor = (100 - Number(originalOrder[0].discount_percentage || 0)) / 100;
         }
       } else if (retData[0].vendor_id) {
-        discountFactor = 0.75;
+        const [vendorInfo]: any = await connection.execute('SELECT name_en FROM vendors WHERE vendor_id = ?', [retData[0].vendor_id]);
+        if (vendorInfo.length > 0 && vendorInfo[0].name_en.toLowerCase().includes('canteen')) {
+          discountFactor = 0.65;
+        } else {
+          discountFactor = 0.75;
+        }
       }
     }
 
