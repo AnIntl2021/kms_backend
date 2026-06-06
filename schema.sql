@@ -309,3 +309,43 @@ CREATE TABLE IF NOT EXISTS menu_item_ingredients (
   FOREIGN KEY (menu_item_id) REFERENCES menu_items(menu_item_id),
   FOREIGN KEY (inventory_item_id) REFERENCES inventory_items(inventory_item_id)
 ) ENGINE=InnoDB;
+
+-- 14. Company Assets (Balance Sheet)
+CREATE TABLE IF NOT EXISTS company_assets (
+  asset_id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  type VARCHAR(100),
+  value DECIMAL(10,3) NOT NULL DEFAULT 0.000,
+  depreciation_rate DECIMAL(5,2) DEFAULT 0.00,
+  date_acquired DATE,
+  status ENUM('active', 'disposed', 'sold') DEFAULT 'active',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deleted_at TIMESTAMP NULL
+) ENGINE=InnoDB;
+
+-- 15. Company Liabilities (Balance Sheet)
+CREATE TABLE IF NOT EXISTS company_liabilities (
+  liability_id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  type VARCHAR(100),
+  amount DECIMAL(10,3) NOT NULL DEFAULT 0.000,
+  interest_rate VARCHAR(50),
+  due_date DATE,
+  status ENUM('active', 'paid') DEFAULT 'active',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deleted_at TIMESTAMP NULL
+) ENGINE=InnoDB;
+
+-- 16. Employees (Payroll)
+CREATE TABLE IF NOT EXISTS employees (
+  employee_id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  role VARCHAR(100),
+  salary DECIMAL(10,3) NOT NULL DEFAULT 0.000,
+  status ENUM('active', 'inactive') DEFAULT 'active',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deleted_at TIMESTAMP NULL
+) ENGINE=InnoDB;

@@ -24,11 +24,23 @@ export const authMiddleware = (req: AuthRequest, res: Response, next: NextFuncti
   next();
 };
 
-export const authorize = (roles: string[]) => {
+export const authorize = (allowedRolesOrPermissions: string[]) => {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
-    if (!req.user || !roles.includes(req.user.role)) {
+    if (!req.user) {
+      return errorResponse(res, 'Access denied: not authenticated', 403);
+    }
+    
+    // Check if the user's role is in the allowed list (backward compatibility)
+    const hasRole = allowedRolesOrPermissions.includes(req.user.role);
+    
+    // Check if the user has at least one of the required permissions
+    const userPermissions = req.user.permissions || [];
+    const hasPermission = allowedRolesOrPermissions.some(perm => userPermissions.includes(perm));
+    
+    if (!hasRole && !hasPermission && req.user.role !== 'super_admin') {
       return errorResponse(res, 'Access denied: insufficient permissions', 403);
     }
+    
     next();
   };
 };

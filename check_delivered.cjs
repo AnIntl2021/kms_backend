@@ -18,7 +18,8 @@ async function run() {
       LEFT JOIN menu_items mi ON soi.menu_item_id = mi.menu_item_id
       LEFT JOIN vendors v ON s.vendor_id = v.vendor_id
       WHERE s.deleted_at IS NULL 
-        AND v.name_en = 'Canteen'
+        AND (v.name_en LIKE '%Canteen%' OR s.customer_name LIKE '%Canteen%')
+        AND s.dispatch_status = 'delivered'
     `);
     
     let totalItems = 0;
@@ -45,7 +46,7 @@ async function run() {
       }
     });
     
-    console.log(`TOTAL DELIVERED SANDWICHES SOLD IN MAY FOR CLIENT 'Canteen': ${totalItems}`);
+    console.log(`TOTAL DELIVERED SANDWICHES SOLD IN MAY: ${totalItems}`);
     
   } catch (e) {
     console.error("Error:", e.message);

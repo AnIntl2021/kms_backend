@@ -15,6 +15,9 @@ import wastageRoutes from './wastage.routes';
 import notificationRoutes from './notification.routes';
 import reportsRoutes from './reports.routes';
 import salesmanRoutes from './salesman.routes';
+import assetsRoutes from './assetsRoutes';
+import liabilitiesRoutes from './liabilitiesRoutes';
+import employeesRoutes from './employeesRoutes';
 
 const router = Router();
 
@@ -34,5 +37,8 @@ router.use('/analytics', analyticsRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/reports', reportsRoutes);
 router.use('/salesmen', salesmanRoutes);
+router.use('/assets', assetsRoutes);
+router.use('/liabilities', liabilitiesRoutes);
+router.use('/employees', employeesRoutes);
 
 export default router;
