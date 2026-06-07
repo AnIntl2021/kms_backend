@@ -147,7 +147,11 @@ CREATE TABLE IF NOT EXISTS inventory_item_packages (
 CREATE TABLE IF NOT EXISTS sales_orders (
   sales_order_id INT AUTO_INCREMENT PRIMARY KEY,
   order_number VARCHAR(50) NOT NULL UNIQUE,
+  reference_order_number VARCHAR(100),
   customer_name VARCHAR(255),
+  client_phone VARCHAR(50),
+  client_address TEXT,
+  notes TEXT,
   total_amount DECIMAL(10,3) NOT NULL DEFAULT 0.000, -- KWD
   status ENUM('pending', 'processing', 'completed', 'cancelled') DEFAULT 'pending',
   admin_id INT,
@@ -341,9 +345,11 @@ CREATE TABLE IF NOT EXISTS company_liabilities (
 -- 16. Employees (Payroll)
 CREATE TABLE IF NOT EXISTS employees (
   employee_id INT AUTO_INCREMENT PRIMARY KEY,
+  employee_no VARCHAR(50) DEFAULT NULL,
   name VARCHAR(255) NOT NULL,
   role VARCHAR(100),
   salary DECIMAL(10,3) NOT NULL DEFAULT 0.000,
+  allowances JSON,
   status ENUM('active', 'inactive') DEFAULT 'active',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

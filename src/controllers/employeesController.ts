@@ -3,7 +3,7 @@ import db from '../config/db';
 
 export const getEmployees = async (req: Request, res: Response) => {
   try {
-    const [rows] = await db.query('SELECT * FROM employees ORDER BY created_at DESC');
+    const [rows] = await db.query('SELECT * FROM employees WHERE deleted_at IS NULL ORDER BY created_at DESC');
     res.json({ success: true, data: rows });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to fetch employees', error });
@@ -11,13 +11,14 @@ export const getEmployees = async (req: Request, res: Response) => {
 };
 
 export const createEmployee = async (req: Request, res: Response) => {
-  const { name, role, salary } = req.body;
+  const { name, role, salary, allowances, employee_no } = req.body;
   try {
+    const allowancesJson = allowances ? JSON.stringify(allowances) : null;
     const [result]: any = await db.query(
-      'INSERT INTO employees (name, role, salary) VALUES (?, ?, ?)',
-      [name, role || 'Staff', salary || 0]
+      'INSERT INTO employees (employee_no, name, role, salary, allowances) VALUES (?, ?, ?, ?, ?)',
+      [employee_no || null, name, role || 'Staff', salary || 0, allowancesJson]
     );
-    res.status(201).json({ success: true, data: { employee_id: result.insertId, name, role, salary, status: 'active' } });
+    res.status(201).json({ success: true, data: { employee_id: result.insertId, employee_no, name, role, salary, allowances, status: 'active' } });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to create employee', error });
   }
@@ -25,14 +26,25 @@ export const createEmployee = async (req: Request, res: Response) => {
 
 export const updateEmployee = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { name, role, salary, status } = req.body;
+  const { name, role, salary, allowances, status, employee_no } = req.body;
   try {
+    const allowancesJson = allowances ? JSON.stringify(allowances) : null;
     await db.query(
-      'UPDATE employees SET name=?, role=?, salary=?, status=? WHERE employee_id=?',
-      [name, role, salary, status || 'active', id]
+      'UPDATE employees SET employee_no=?, name=?, role=?, salary=?, allowances=?, status=? WHERE employee_id=?',
+      [employee_no || null, name, role, salary, allowancesJson, status || 'active', id]
     );
     res.json({ success: true, message: 'Employee updated successfully' });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to update employee', error });
+  }
+};
+
+export const deleteEmployee = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    await db.query('UPDATE employees SET deleted_at = CURRENT_TIMESTAMP WHERE employee_id = ?', [id]);
+    res.json({ success: true, message: 'Employee deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to delete employee', error });
   }
 };

@@ -22,7 +22,7 @@ export const getSales = async (req: Request, res: Response) => {
       DATE_FORMAT(s.created_at, '%Y-%m-%d') as dispatch_date,
       pb.name_en as branch_name,
       pb.phone as branch_phone,
-      v.phone as client_phone,
+      IFNULL(s.client_phone, v.phone) as client_phone,
       sm.name_en as salesman_name,
       sm.phone as salesman_phone
       FROM sales_orders s 
@@ -47,7 +47,7 @@ export const getSaleById = async (req: Request, res: Response) => {
              DATE_FORMAT(s.created_at, '%Y-%m-%d') as dispatch_date,
              pb.name_en as branch_name,
              pb.phone as branch_phone,
-             v.phone as client_phone,
+             IFNULL(s.client_phone, v.phone) as client_phone,
              sm.name_en as salesman_name,
              sm.phone as salesman_phone
       FROM sales_orders s 
@@ -76,14 +76,14 @@ export const getSaleById = async (req: Request, res: Response) => {
 export const createSale = async (req: any, res: Response) => {
   const connection = await pool.getConnection();
   try {
-    const { vendor_id, branch_id, customer_name, items, total_amount, payment_status, dispatch_status, batch_number, expiry_date, dispatch_date } = req.body;
+    const { vendor_id, branch_id, customer_name, client_phone, client_address, reference_order_number, notes, items, total_amount, payment_status, dispatch_status, batch_number, expiry_date, dispatch_date } = req.body;
     const admin_id = req.user?.admin_id || 1;
 
     await connection.beginTransaction();
 
     const [orderRes]: any = await connection.execute(
-      'INSERT INTO sales_orders (order_number, vendor_id, branch_id, customer_name, total_amount, payment_status, dispatch_status, batch_number, expiry_date, admin_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      ['PENDING', vendor_id || null, (branch_id === 'main' ? null : branch_id) || null, customer_name, total_amount, payment_status || 'credit', dispatch_status || 'pending', batch_number || null, expiry_date || null, admin_id, dispatch_date || new Date()]
+      'INSERT INTO sales_orders (order_number, reference_order_number, vendor_id, branch_id, customer_name, client_phone, client_address, notes, total_amount, payment_status, dispatch_status, batch_number, expiry_date, admin_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      ['PENDING', reference_order_number || null, vendor_id || null, (branch_id === 'main' ? null : branch_id) || null, customer_name, client_phone || null, client_address || null, notes || null, total_amount, payment_status || 'credit', dispatch_status || 'pending', batch_number || null, expiry_date || null, admin_id, dispatch_date || new Date()]
     );
 
     const sale_id = orderRes.insertId;
