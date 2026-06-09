@@ -167,7 +167,8 @@ const allowedOrigins = [
   config.corsOrigin, // Auto-read from .env.production (https://freshnfastkw.com)
   'https://freshnfastkw.com',
   'https://www.freshnfastkw.com',
-  'https://api.freshnfastkw.com'
+  'https://api.freshnfastkw.com',
+  'https://erp.freshnfastkw.com'
 ];
 
 app.use(cors({ 
