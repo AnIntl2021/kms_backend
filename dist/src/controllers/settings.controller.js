@@ -1,0 +1,41 @@
+import pool from '../config/db';
+import { successResponse, errorResponse } from '../utils/response';
+import { runBackup } from '../utils/backup';
+export const getSettings = async (req, res) => {
+    try {
+        const [settings] = await pool.execute('SELECT * FROM system_settings');
+        // Map to a more useful object
+        const settingsObj = settings.reduce((acc, curr) => {
+            acc[curr.setting_key] = curr.setting_value;
+            return acc;
+        }, {});
+        return successResponse(res, settingsObj);
+    }
+    catch (error) {
+        console.error('GetSettings Error:', error);
+        return errorResponse(res, 'Failed to fetch settings', 500, error);
+    }
+};
+export const updateSettings = async (req, res) => {
+    try {
+        const settings = req.body; // Expecting { key: value, ... }
+        const queries = Object.keys(settings).map(key => {
+            return pool.execute('INSERT INTO system_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = ?', [key, settings[key], settings[key]]);
+        });
+        await Promise.all(queries);
+        return successResponse(res, null, 'Settings updated successfully');
+    }
+    catch (error) {
+        console.error('UpdateSettings Error:', error);
+        return errorResponse(res, 'Failed to update settings', 500, error);
+    }
+};
+export const triggerBackup = async (req, res) => {
+    const result = await runBackup();
+    if (result.success) {
+        return successResponse(res, { file: result.file }, 'Backup created and rotated successfully');
+    }
+    else {
+        return errorResponse(res, 'Backup failed', 500, result.error);
+    }
+};

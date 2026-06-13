@@ -1,0 +1,10 @@
+import { Router } from 'express';
+import { getVendors, createVendor, updateVendor, deleteVendor } from '../controllers/vendor.controller';
+import { authMiddleware, authorize } from '../middleware/auth.middleware';
+const router = Router();
+router.use(authMiddleware);
+router.get('/', getVendors);
+router.post('/', authorize(['super_admin', 'manager']), createVendor);
+router.put('/:id', authorize(['super_admin']), updateVendor);
+router.delete('/:id', authorize(['super_admin']), deleteVendor);
+export default router;

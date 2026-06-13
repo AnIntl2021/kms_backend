@@ -19,6 +19,7 @@ import assetsRoutes from './assetsRoutes';
 import liabilitiesRoutes from './liabilitiesRoutes';
 import employeesRoutes from './employeesRoutes';
 import expenseRoutes from './expense.routes';
+import aiRoutes from './ai.routes';
 
 const router = Router();
 
@@ -42,5 +43,6 @@ router.use('/assets', assetsRoutes);
 router.use('/liabilities', liabilitiesRoutes);
 router.use('/employees', employeesRoutes);
 router.use('/expenses', expenseRoutes);
+router.use('/ai', aiRoutes);
 
 export default router;
