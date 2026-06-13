@@ -51,6 +51,9 @@ var init_db = __esm({
       queueLimit: 0
     };
     pool = mysql.createPool(dbConfig);
+    pool.on("connection", (connection) => {
+      connection.query("SET time_zone = '+03:00'");
+    });
     db_default = pool;
   }
 });
@@ -105,7 +108,7 @@ var init_notifications = __esm({
 
 // src/app.ts
 init_config();
-import express from "express";
+import express4 from "express";
 import cors from "cors";
 import path4 from "path";
 import { fileURLToPath as fileURLToPath2 } from "url";
@@ -161,9 +164,9 @@ var login = async (req, res) => {
     }
     console.log("Attempting login for:", username);
     const [rows] = await db_default.execute(
-      `SELECT a.*, r.role_name, r.display_name_en, r.display_name_ar 
+      `SELECT a.*, r.role_name, r.display_name_en, r.display_name_ar, r.permissions 
        FROM admins a 
-       JOIN roles r ON a.role_id = r.role_id 
+       LEFT JOIN roles r ON a.role_id = r.role_id 
        WHERE (a.username = ? OR a.email = ?) AND a.deleted_at IS NULL AND a.status = 'active'`,
       [username, username]
       // Check both fields with the same input
@@ -185,8 +188,9 @@ var login = async (req, res) => {
     const token = generateToken({
       admin_id: admin.admin_id,
       username: admin.username,
-      role: admin.role_name,
-      display_name: admin.display_name_en
+      role: admin.role_name || (admin.admin_id === 1 ? "super_admin" : "user"),
+      display_name: admin.display_name_en || admin.first_name,
+      permissions: typeof admin.permissions === "string" ? JSON.parse(admin.permissions) : admin.permissions || []
     });
     console.log("Logging audit entry for:", admin.admin_id);
     await db_default.execute(
@@ -200,7 +204,8 @@ var login = async (req, res) => {
         username: admin.username,
         role: admin.role_name,
         firstName: admin.first_name,
-        lastName: admin.last_name
+        lastName: admin.last_name,
+        permissions: typeof admin.permissions === "string" ? JSON.parse(admin.permissions) : admin.permissions || []
       },
       token
     }, "Login successful");
@@ -211,7 +216,7 @@ var login = async (req, res) => {
 };
 var getRoles = async (req, res) => {
   try {
-    const [roles] = await db_default.execute("SELECT role_id, role_name, display_name_en, display_name_ar FROM roles WHERE deleted_at IS NULL");
+    const [roles] = await db_default.execute("SELECT role_id, role_name, display_name_en, display_name_ar, permissions FROM roles WHERE deleted_at IS NULL");
     return successResponse(res, roles);
   } catch (error) {
     return errorResponse(res, "Failed to fetch roles", 500, error);
@@ -223,14 +228,47 @@ var getProfile = async (req, res) => {
 var getUsers = async (req, res) => {
   try {
     const [users] = await db_default.execute(`
-      SELECT a.admin_id, a.username, a.email, a.first_name, a.last_name, a.status, a.created_at, r.role_name 
+      SELECT a.admin_id, a.username, a.email, a.first_name, a.last_name, a.status, a.role_id, a.created_at, r.role_name, r.display_name_en 
       FROM admins a 
-      JOIN roles r ON a.role_id = r.role_id 
+      LEFT JOIN roles r ON a.role_id = r.role_id 
       WHERE a.deleted_at IS NULL
     `);
     return successResponse(res, users);
   } catch (error) {
     return errorResponse(res, "Failed to fetch users", 500, error);
+  }
+};
+var updateUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { first_name, last_name, email, username, password, role_id, status } = req.body;
+    if (password) {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      await db_default.execute(
+        "UPDATE admins SET first_name=?, last_name=?, email=?, username=?, password=?, role_id=?, status=? WHERE admin_id=?",
+        [first_name, last_name, email, username, hashedPassword, role_id || null, status || "active", id]
+      );
+    } else {
+      await db_default.execute(
+        "UPDATE admins SET first_name=?, last_name=?, email=?, username=?, role_id=?, status=? WHERE admin_id=?",
+        [first_name, last_name, email, username, role_id || null, status || "active", id]
+      );
+    }
+    return successResponse(res, null, "User updated successfully");
+  } catch (error) {
+    return errorResponse(res, "Failed to update user", 500, error);
+  }
+};
+var deleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (id === "1") {
+      return errorResponse(res, "Cannot delete the primary Super Admin account", 400);
+    }
+    await db_default.execute('UPDATE admins SET deleted_at=CURRENT_TIMESTAMP, status="inactive" WHERE admin_id=?', [id]);
+    return successResponse(res, null, "User deleted successfully");
+  } catch (error) {
+    return errorResponse(res, "Failed to delete user", 500, error);
   }
 };
 var getAuditLogs = async (req, res) => {
@@ -267,6 +305,50 @@ var createUser = async (req, res) => {
   }
 };
 
+// src/controllers/roles.controller.ts
+init_db();
+var createRole = async (req, res) => {
+  try {
+    const { role_name, display_name_en, display_name_ar, permissions } = req.body;
+    const [existing] = await db_default.execute("SELECT role_id FROM roles WHERE role_name = ?", [role_name]);
+    if (existing.length > 0) return errorResponse(res, "Role name already exists", 400);
+    const permsJson = JSON.stringify(permissions || []);
+    const [result] = await db_default.execute(
+      "INSERT INTO roles (role_name, display_name_en, display_name_ar, permissions) VALUES (?, ?, ?, ?)",
+      [role_name, display_name_en, display_name_ar || display_name_en, permsJson]
+    );
+    return successResponse(res, { role_id: result.insertId }, "Role created successfully", 201);
+  } catch (error) {
+    console.error("Create Role Error:", error);
+    return errorResponse(res, `Failed to create role: ${error.message || "Unknown error"}`, 500, error);
+  }
+};
+var updateRole = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { role_name, display_name_en, display_name_ar, permissions } = req.body;
+    const permsJson = JSON.stringify(permissions || []);
+    await db_default.execute(
+      "UPDATE roles SET role_name=?, display_name_en=?, display_name_ar=?, permissions=? WHERE role_id=?",
+      [role_name, display_name_en, display_name_ar || display_name_en, permsJson, id]
+    );
+    return successResponse(res, null, "Role updated successfully");
+  } catch (error) {
+    return errorResponse(res, "Failed to update role", 500, error);
+  }
+};
+var deleteRole = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [users] = await db_default.execute("SELECT admin_id FROM admins WHERE role_id = ? AND deleted_at IS NULL", [id]);
+    if (users.length > 0) return errorResponse(res, "Cannot delete role as it is assigned to active users", 400);
+    await db_default.execute("UPDATE roles SET deleted_at=CURRENT_TIMESTAMP WHERE role_id=?", [id]);
+    return successResponse(res, null, "Role deleted successfully");
+  } catch (error) {
+    return errorResponse(res, "Failed to delete role", 500, error);
+  }
+};
+
 // src/middleware/auth.middleware.ts
 var authMiddleware = (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -281,9 +363,15 @@ var authMiddleware = (req, res, next) => {
   req.user = decoded;
   next();
 };
-var authorize = (roles) => {
+var authorize = (allowedRolesOrPermissions) => {
   return (req, res, next) => {
-    if (!req.user || !roles.includes(req.user.role)) {
+    if (!req.user) {
+      return errorResponse(res, "Access denied: not authenticated", 403);
+    }
+    const hasRole = allowedRolesOrPermissions.includes(req.user.role);
+    const userPermissions = req.user.permissions || [];
+    const hasPermission = allowedRolesOrPermissions.some((perm) => userPermissions.includes(perm));
+    if (!hasRole && !hasPermission && req.user.role !== "super_admin") {
       return errorResponse(res, "Access denied: insufficient permissions", 403);
     }
     next();
@@ -294,9 +382,14 @@ var authorize = (roles) => {
 var router = Router();
 router.post("/login", login);
 router.get("/profile", authMiddleware, getProfile);
-router.get("/roles", authMiddleware, getRoles);
-router.get("/users", authMiddleware, authorize(["super_admin", "manager"]), getUsers);
-router.post("/users", authMiddleware, authorize(["super_admin", "manager"]), createUser);
+router.get("/roles", authMiddleware, authorize(["super_admin", "manager", "roles"]), getRoles);
+router.post("/roles", authMiddleware, authorize(["super_admin", "manager", "roles"]), createRole);
+router.put("/roles/:id", authMiddleware, authorize(["super_admin", "manager", "roles"]), updateRole);
+router.delete("/roles/:id", authMiddleware, authorize(["super_admin", "manager", "roles"]), deleteRole);
+router.get("/users", authMiddleware, authorize(["super_admin", "manager", "users"]), getUsers);
+router.post("/users", authMiddleware, authorize(["super_admin", "manager", "users"]), createUser);
+router.put("/users/:id", authMiddleware, authorize(["super_admin", "manager", "users"]), updateUser);
+router.delete("/users/:id", authMiddleware, authorize(["super_admin", "manager", "users"]), deleteUser);
 var auth_routes_default = router;
 
 // src/routes/business.routes.ts
@@ -1426,13 +1519,6 @@ import { Router as Router8 } from "express";
 init_db();
 var getSales = async (req, res) => {
   try {
-    await db_default.execute(`
-      UPDATE sales_orders 
-      SET payment_status = 'paid' 
-      WHERE payment_status = 'credit' 
-      AND expiry_date <= CURRENT_DATE()
-      AND deleted_at IS NULL
-    `);
     const [rows] = await db_default.execute(`
       SELECT s.*, 
       (SELECT COUNT(*) FROM sales_order_items WHERE sale_id = s.sale_id) as items_count,
@@ -1440,7 +1526,7 @@ var getSales = async (req, res) => {
       DATE_FORMAT(s.created_at, '%Y-%m-%d') as dispatch_date,
       pb.name_en as branch_name,
       pb.phone as branch_phone,
-      v.phone as client_phone,
+      IFNULL(s.client_phone, v.phone) as client_phone,
       sm.name_en as salesman_name,
       sm.phone as salesman_phone
       FROM sales_orders s 
@@ -1464,7 +1550,7 @@ var getSaleById = async (req, res) => {
              DATE_FORMAT(s.created_at, '%Y-%m-%d') as dispatch_date,
              pb.name_en as branch_name,
              pb.phone as branch_phone,
-             v.phone as client_phone,
+             IFNULL(s.client_phone, v.phone) as client_phone,
              sm.name_en as salesman_name,
              sm.phone as salesman_phone
       FROM sales_orders s 
@@ -1489,12 +1575,12 @@ var getSaleById = async (req, res) => {
 var createSale = async (req, res) => {
   const connection = await db_default.getConnection();
   try {
-    const { vendor_id, branch_id, customer_name, items, total_amount, payment_status, dispatch_status, batch_number, expiry_date, dispatch_date } = req.body;
+    const { vendor_id, branch_id, customer_name, client_phone, client_address, reference_order_number, notes, items, total_amount, payment_status, dispatch_status, batch_number, expiry_date, dispatch_date } = req.body;
     const admin_id = req.user?.admin_id || 1;
     await connection.beginTransaction();
     const [orderRes] = await connection.execute(
-      "INSERT INTO sales_orders (order_number, vendor_id, branch_id, customer_name, total_amount, payment_status, dispatch_status, batch_number, expiry_date, admin_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      ["PENDING", vendor_id || null, (branch_id === "main" ? null : branch_id) || null, customer_name, total_amount, payment_status || "credit", dispatch_status || "pending", batch_number || null, expiry_date || null, admin_id, dispatch_date || /* @__PURE__ */ new Date()]
+      "INSERT INTO sales_orders (order_number, reference_order_number, vendor_id, branch_id, customer_name, client_phone, client_address, notes, total_amount, payment_status, dispatch_status, batch_number, expiry_date, admin_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ["PENDING", reference_order_number || null, vendor_id || null, (branch_id === "main" ? null : branch_id) || null, customer_name, client_phone || null, client_address || null, notes || null, total_amount, payment_status || "credit", dispatch_status || "pending", batch_number || null, expiry_date || null, admin_id, dispatch_date || /* @__PURE__ */ new Date()]
     );
     const sale_id = orderRes.insertId;
     const order_number = `FNFI-${1e5 + sale_id}`;
@@ -1886,7 +1972,12 @@ var processReturn = async (req, res) => {
         discountFactor = (100 - Number(originalOrder[0].discount_percentage || 0)) / 100;
       }
     } else if (vendor_id) {
-      discountFactor = 0.75;
+      const [vendorInfo] = await connection.execute("SELECT name_en FROM vendors WHERE vendor_id = ?", [vendor_id]);
+      if (vendorInfo.length > 0 && vendorInfo[0].name_en.toLowerCase().includes("canteen")) {
+        discountFactor = 0.65;
+      } else {
+        discountFactor = 0.75;
+      }
     }
     let total_credit = 0;
     items.forEach((i) => {
@@ -2020,7 +2111,12 @@ var updateReturn = async (req, res) => {
           discountFactor = (100 - Number(originalOrder[0].discount_percentage || 0)) / 100;
         }
       } else if (retData[0].vendor_id) {
-        discountFactor = 0.75;
+        const [vendorInfo] = await connection.execute("SELECT name_en FROM vendors WHERE vendor_id = ?", [retData[0].vendor_id]);
+        if (vendorInfo.length > 0 && vendorInfo[0].name_en.toLowerCase().includes("canteen")) {
+          discountFactor = 0.65;
+        } else {
+          discountFactor = 0.75;
+        }
       }
     }
     let total_credit = 0;
@@ -2109,10 +2205,14 @@ var getReturnItems = async (req, res) => {
   try {
     const [items] = await db_default.execute(`
       SELECT 
-        ri.menu_item_id, ri.quantity, ri.unit_price as price,
+        ri.menu_item_id, ri.quantity, 
+        (ri.unit_price * (100 - IFNULL(so.discount_percentage, 25)) / 100) as unit_price,
+        ri.unit_price as original_price,
         m.name_en, m.name_ar, m.barcode as item_code
       FROM sales_return_items ri
       LEFT JOIN menu_items m ON ri.menu_item_id = m.menu_item_id
+      LEFT JOIN sales_returns sr ON ri.return_id = sr.return_id
+      LEFT JOIN sales_orders so ON sr.sale_id = so.sale_id
       WHERE ri.return_id = ?
     `, [return_id]);
     return successResponse(res, items);
@@ -2369,12 +2469,14 @@ var getStoreForecasting = async (req, res) => {
       SELECT 
         v.vendor_id, 
         v.name_en as vendor_name, 
-        SUM(CASE WHEN so.dispatch_status IN ('delivered', 'dispatched', 'in_transit', 'paid') THEN so.final_amount ELSE 0 END) as sales_performance,
+        pb.branch_id,
+        pb.name_en as branch_name,
         (
           SELECT SUM(w.quantity) 
           FROM wastage w 
           LEFT JOIN sales_returns r ON w.return_id = r.return_id
           WHERE (w.vendor_id = v.vendor_id OR r.vendor_id = v.vendor_id)
+          AND (pb.branch_id IS NULL OR r.branch_id = pb.branch_id)
           AND w.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
         ) as recent_wastage_units,
         (
@@ -2383,12 +2485,14 @@ var getStoreForecasting = async (req, res) => {
           JOIN menu_items mi ON w.menu_item_id = mi.menu_item_id
           LEFT JOIN sales_returns r ON w.return_id = r.return_id
           WHERE (w.vendor_id = v.vendor_id OR r.vendor_id = v.vendor_id)
+          AND (pb.branch_id IS NULL OR r.branch_id = pb.branch_id)
           AND w.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
         ) as recent_loss_kwd,
         (
           SELECT SUM(so_inner.final_amount) 
           FROM sales_orders so_inner 
           WHERE so_inner.vendor_id = v.vendor_id 
+          AND (pb.branch_id IS NULL OR so_inner.branch_id = pb.branch_id)
           AND so_inner.dispatch_status IN ('delivered', 'dispatched', 'in_transit')
           AND so_inner.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
         ) as recent_sales,
@@ -2397,13 +2501,14 @@ var getStoreForecasting = async (req, res) => {
           FROM sales_order_items soi
           JOIN sales_orders s ON soi.sale_id = s.sale_id
           WHERE s.vendor_id = v.vendor_id
+          AND (pb.branch_id IS NULL OR s.branch_id = pb.branch_id)
           AND s.dispatch_status IN ('delivered', 'dispatched', 'in_transit')
           AND s.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
         ) as recent_sold_units
       FROM vendors v
-      LEFT JOIN sales_orders so ON v.vendor_id = so.vendor_id
+      LEFT JOIN partner_branches pb ON pb.partner_id = v.vendor_id AND pb.status = 'active'
       WHERE v.deleted_at IS NULL
-      GROUP BY v.vendor_id
+      GROUP BY v.vendor_id, pb.branch_id
     `);
     const forecasting = stats.map((store) => {
       const wasteUnits = parseFloat(store.recent_wastage_units || "0");
@@ -3154,7 +3259,11 @@ var getClientStatements = async (req, res) => {
     const orderIds = orders.map((o) => o.sale_id);
     const placeholders = orderIds.map(() => "?").join(",");
     const [items] = await db_default.execute(`
-      SELECT soi.*, mi.name_en, mi.name_ar
+      SELECT soi.*, mi.name_en, mi.name_ar,
+        (SELECT COALESCE(SUM(sri.quantity), 0)
+         FROM sales_return_items sri
+         JOIN sales_returns sr ON sri.return_id = sr.return_id
+         WHERE sr.sale_id = soi.sale_id AND sri.menu_item_id = soi.menu_item_id) as returns_qty
       FROM sales_order_items soi
       JOIN menu_items mi ON soi.menu_item_id = mi.menu_item_id
       WHERE soi.sale_id IN (${placeholders})
@@ -3268,25 +3377,178 @@ router16.put("/:id", updateSalesman);
 router16.delete("/:id", deleteSalesman);
 var salesman_routes_default = router16;
 
+// src/routes/assetsRoutes.ts
+import express from "express";
+
+// src/controllers/assetsController.ts
+init_db();
+var getAssets = async (req, res) => {
+  try {
+    const [rows] = await db_default.query("SELECT * FROM company_assets ORDER BY created_at DESC");
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Failed to fetch assets", error });
+  }
+};
+var createAsset = async (req, res) => {
+  const { name, type, value, depreciation_rate, date_acquired } = req.body;
+  try {
+    const [result] = await db_default.query(
+      "INSERT INTO company_assets (name, type, value, depreciation_rate, date_acquired) VALUES (?, ?, ?, ?, ?)",
+      [name, type || "General", value, depreciation_rate || 0, date_acquired || /* @__PURE__ */ new Date()]
+    );
+    res.status(201).json({ success: true, data: { asset_id: result.insertId, name, type, value, depreciation_rate, date_acquired } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Failed to create asset", error });
+  }
+};
+var updateAsset = async (req, res) => {
+  const { id } = req.params;
+  const { name, type, value, depreciation_rate, date_acquired } = req.body;
+  try {
+    await db_default.query(
+      "UPDATE company_assets SET name=?, type=?, value=?, depreciation_rate=?, date_acquired=? WHERE asset_id=?",
+      [name, type, value, depreciation_rate, date_acquired, id]
+    );
+    res.json({ success: true, message: "Asset updated successfully" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Failed to update asset", error });
+  }
+};
+
+// src/routes/assetsRoutes.ts
+var router17 = express.Router();
+router17.get("/", getAssets);
+router17.post("/", createAsset);
+router17.put("/:id", updateAsset);
+var assetsRoutes_default = router17;
+
+// src/routes/liabilitiesRoutes.ts
+import express2 from "express";
+
+// src/controllers/liabilitiesController.ts
+init_db();
+var getLiabilities = async (req, res) => {
+  try {
+    const [rows] = await db_default.query("SELECT * FROM company_liabilities ORDER BY created_at DESC");
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Failed to fetch liabilities", error });
+  }
+};
+var createLiability = async (req, res) => {
+  const { name, type, amount, interest_rate, due_date } = req.body;
+  try {
+    const [result] = await db_default.query(
+      "INSERT INTO company_liabilities (name, type, amount, interest_rate, due_date) VALUES (?, ?, ?, ?, ?)",
+      [name, type || "Loan", amount, interest_rate || "0%", due_date || null]
+    );
+    res.status(201).json({ success: true, data: { liability_id: result.insertId, name, type, amount, interest_rate, due_date } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Failed to create liability", error });
+  }
+};
+var updateLiability = async (req, res) => {
+  const { id } = req.params;
+  const { name, type, amount, interest_rate, due_date } = req.body;
+  try {
+    await db_default.query(
+      "UPDATE company_liabilities SET name=?, type=?, amount=?, interest_rate=?, due_date=? WHERE liability_id=?",
+      [name, type, amount, interest_rate, due_date, id]
+    );
+    res.json({ success: true, message: "Liability updated successfully" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Failed to update liability", error });
+  }
+};
+
+// src/routes/liabilitiesRoutes.ts
+var router18 = express2.Router();
+router18.get("/", getLiabilities);
+router18.post("/", createLiability);
+router18.put("/:id", updateLiability);
+var liabilitiesRoutes_default = router18;
+
+// src/routes/employeesRoutes.ts
+import express3 from "express";
+
+// src/controllers/employeesController.ts
+init_db();
+var getEmployees = async (req, res) => {
+  try {
+    const [rows] = await db_default.query("SELECT * FROM employees WHERE deleted_at IS NULL ORDER BY created_at DESC");
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Failed to fetch employees", error });
+  }
+};
+var createEmployee = async (req, res) => {
+  const { name, role, salary, allowances, employee_no } = req.body;
+  try {
+    const allowancesJson = allowances ? JSON.stringify(allowances) : null;
+    const [result] = await db_default.query(
+      "INSERT INTO employees (employee_no, name, role, salary, allowances) VALUES (?, ?, ?, ?, ?)",
+      [employee_no || null, name, role || "Staff", salary || 0, allowancesJson]
+    );
+    res.status(201).json({ success: true, data: { employee_id: result.insertId, employee_no, name, role, salary, allowances, status: "active" } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Failed to create employee", error });
+  }
+};
+var updateEmployee = async (req, res) => {
+  const { id } = req.params;
+  const { name, role, salary, allowances, status, employee_no } = req.body;
+  try {
+    const allowancesJson = allowances ? JSON.stringify(allowances) : null;
+    await db_default.query(
+      "UPDATE employees SET employee_no=?, name=?, role=?, salary=?, allowances=?, status=? WHERE employee_id=?",
+      [employee_no || null, name, role, salary, allowancesJson, status || "active", id]
+    );
+    res.json({ success: true, message: "Employee updated successfully" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Failed to update employee", error });
+  }
+};
+var deleteEmployee = async (req, res) => {
+  const { id } = req.params;
+  try {
+    await db_default.query("UPDATE employees SET deleted_at = CURRENT_TIMESTAMP WHERE employee_id = ?", [id]);
+    res.json({ success: true, message: "Employee deleted successfully" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Failed to delete employee", error });
+  }
+};
+
+// src/routes/employeesRoutes.ts
+var router19 = express3.Router();
+router19.get("/", getEmployees);
+router19.post("/", createEmployee);
+router19.put("/:id", updateEmployee);
+router19.delete("/:id", deleteEmployee);
+var employeesRoutes_default = router19;
+
 // src/routes/index.ts
-var router17 = Router17();
-router17.use("/auth", auth_routes_default);
-router17.use("/business", business_routes_default);
-router17.use("/inventory", inventory_routes_default);
-router17.use("/wastage", wastage_routes_default);
-router17.use("/vendors", vendor_routes_default);
-router17.use("/purchases", purchase_routes_default);
-router17.use("/menu", menu_routes_default);
-router17.use("/branches", branch_routes_default);
-router17.use("/sales", sales_routes_default);
-router17.use("/accounts", accounts_routes_default);
-router17.use("/factory", factory_routes_default);
-router17.use("/settings", settings_routes_default);
-router17.use("/analytics", analytics_routes_default);
-router17.use("/notifications", notification_routes_default);
-router17.use("/reports", reports_routes_default);
-router17.use("/salesmen", salesman_routes_default);
-var routes_default = router17;
+var router20 = Router17();
+router20.use("/auth", auth_routes_default);
+router20.use("/business", business_routes_default);
+router20.use("/inventory", inventory_routes_default);
+router20.use("/wastage", wastage_routes_default);
+router20.use("/vendors", vendor_routes_default);
+router20.use("/purchases", purchase_routes_default);
+router20.use("/menu", menu_routes_default);
+router20.use("/branches", branch_routes_default);
+router20.use("/sales", sales_routes_default);
+router20.use("/accounts", accounts_routes_default);
+router20.use("/factory", factory_routes_default);
+router20.use("/settings", settings_routes_default);
+router20.use("/analytics", analytics_routes_default);
+router20.use("/notifications", notification_routes_default);
+router20.use("/reports", reports_routes_default);
+router20.use("/salesmen", salesman_routes_default);
+router20.use("/assets", assetsRoutes_default);
+router20.use("/liabilities", liabilitiesRoutes_default);
+router20.use("/employees", employeesRoutes_default);
+var routes_default = router20;
 
 // src/middleware/error.middleware.ts
 var errorHandler = (err, req, res, next) => {
@@ -3300,7 +3562,7 @@ var errorHandler = (err, req, res, next) => {
 init_db();
 var __filename2 = fileURLToPath2(import.meta.url);
 var __dirname2 = path4.dirname(__filename2);
-var app = express();
+var app = express4();
 var initFIFOEngine = async () => {
   try {
     await db_default.execute(`
@@ -3450,10 +3712,11 @@ app.use(cors({
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"]
 }));
-app.use("/uploads", express.static(path4.join(process.cwd(), "uploads")));
+app.use("/uploads", express4.static(path4.join(process.cwd(), "uploads")));
+app.use("/api/uploads", express4.static(path4.join(process.cwd(), "uploads")));
 app.use(morgan(config.env === "development" ? "dev" : "combined"));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express4.json());
+app.use(express4.urlencoded({ extended: true }));
 app.get("/health", (req, res) => {
   res.status(200).json({ status: "OK", env: config.env });
 });

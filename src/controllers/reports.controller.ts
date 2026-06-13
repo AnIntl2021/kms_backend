@@ -605,7 +605,11 @@ export const getClientStatements = async (req: Request, res: Response) => {
     const placeholders = orderIds.map(() => '?').join(',');
     
     const [items]: any = await pool.execute(`
-      SELECT soi.*, mi.name_en, mi.name_ar
+      SELECT soi.*, mi.name_en, mi.name_ar,
+        (SELECT COALESCE(SUM(sri.quantity), 0)
+         FROM sales_return_items sri
+         JOIN sales_returns sr ON sri.return_id = sr.return_id
+         WHERE sr.sale_id = soi.sale_id AND sri.menu_item_id = soi.menu_item_id) as returns_qty
       FROM sales_order_items soi
       JOIN menu_items mi ON soi.menu_item_id = mi.menu_item_id
       WHERE soi.sale_id IN (${placeholders})
@@ -626,3 +630,163 @@ export const getClientStatements = async (req: Request, res: Response) => {
 };
 
 
+export const getOperationalPNL = async (req: Request, res: Response) => {
+  try {
+    const { startDate, endDate } = req.query;
+    
+    // Default to current year if no dates provided
+    let dateFilter = '';
+    let params: any[] = [];
+    if (startDate && endDate) {
+      dateFilter = 'AND DATE(created_at) BETWEEN ? AND ?';
+      params = [startDate, endDate];
+    }
+
+    // 1. SALES BY CATEGORY
+    let salesQuery = `
+      SELECT 
+        COALESCE(c.name_en, 'Uncategorized') as category_name, 
+        SUM(soi.quantity * soi.price) as total_sales, 
+        SUM(soi.quantity * COALESCE(mi.cost_price, 0)) as total_cogs
+      FROM sales_order_items soi
+      JOIN menu_items mi ON soi.menu_item_id = mi.menu_item_id
+      LEFT JOIN categories c ON mi.category_id = c.category_id
+      JOIN sales_orders s ON soi.sale_id = s.sale_id
+      WHERE s.deleted_at IS NULL ${dateFilter.replace('created_at', 's.created_at')}
+      GROUP BY c.name_en
+    `;
+    const [salesRaw]: any = await pool.execute(salesQuery, params);
+
+    // 2. RETURNS BY CATEGORY (to deduct from sales)
+    let returnsQuery = `
+      SELECT 
+        COALESCE(c.name_en, 'Uncategorized') as category_name, 
+        SUM(sri.quantity * COALESCE(mi.price, 0)) as total_returns, 
+        SUM(sri.quantity * COALESCE(mi.cost_price, 0)) as return_cogs
+      FROM sales_return_items sri
+      JOIN menu_items mi ON sri.menu_item_id = mi.menu_item_id
+      LEFT JOIN categories c ON mi.category_id = c.category_id
+      JOIN sales_returns sr ON sri.return_id = sr.return_id
+      WHERE 1=1 ${dateFilter.replace('created_at', 'sr.created_at')}
+      GROUP BY c.name_en
+    `;
+    const [returnsRaw]: any = await pool.execute(returnsQuery, params);
+
+    // Merge Sales and Returns
+    const salesMap = new Map();
+    salesRaw.forEach((row: any) => {
+      salesMap.set(row.category_name, {
+        category: row.category_name,
+        sales: Number(row.total_sales),
+        cogs: Number(row.total_cogs)
+      });
+    });
+
+    returnsRaw.forEach((row: any) => {
+      if (salesMap.has(row.category_name)) {
+        const existing = salesMap.get(row.category_name);
+        existing.sales -= Number(row.total_returns);
+        existing.cogs -= Number(row.return_cogs);
+      } else {
+        salesMap.set(row.category_name, {
+          category: row.category_name,
+          sales: -Number(row.total_returns),
+          cogs: -Number(row.return_cogs)
+        });
+      }
+    });
+
+    const salesByCategory = Array.from(salesMap.values());
+
+    // 3. OPERATIONAL EXPENSES
+    // Pull Labor Expenses from Employees table
+    let employeesQuery = `
+      SELECT role as category, SUM(salary) as amount 
+      FROM employees 
+      WHERE deleted_at IS NULL AND status = 'active'
+      GROUP BY role
+    `;
+    const [laborRaw]: any = await pool.execute(employeesQuery);
+    const laborExpenses = laborRaw.map((e: any) => ({ category: e.category, amount: Number(e.amount) }));
+
+    // Pull Other Expenses from operational_expenses
+    let expensesQuery = `
+      SELECT category, SUM(amount) as total
+      FROM operational_expenses
+      WHERE type = 'Other Expense' ${dateFilter.replace('created_at', 'expense_date')}
+      GROUP BY category
+    `;
+    const [expensesRaw]: any = await pool.execute(expensesQuery, params);
+    const otherExpenses = expensesRaw.map((e: any) => ({ category: e.category, amount: Number(e.total) }));
+
+    // Calculate Asset Depreciation (Monthly)
+    let assetsQuery = `SELECT name, value, depreciation_rate FROM company_assets`;
+    const [assetsRaw]: any = await pool.execute(assetsQuery);
+    
+    let totalMonthlyDepreciation = 0;
+    assetsRaw.forEach((asset: any) => {
+      const val = Number(asset.value) || 0;
+      const rate = Number(asset.depreciation_rate) || 0;
+      if (val > 0 && rate > 0) {
+        // Annual depreciation is (val * rate / 100), monthly is divided by 12
+        const monthlyDepreciation = (val * (rate / 100)) / 12;
+        totalMonthlyDepreciation += monthlyDepreciation;
+      }
+    });
+
+    if (totalMonthlyDepreciation > 0) {
+      otherExpenses.push({
+        category: 'Asset Depreciation (Monthly)',
+        amount: totalMonthlyDepreciation
+      });
+    }
+
+    // Calculate Liability Interest (Monthly)
+    let liabilitiesQuery = `SELECT name, amount, interest_rate FROM company_liabilities`;
+    const [liabilitiesRaw]: any = await pool.execute(liabilitiesQuery);
+
+    let totalMonthlyInterest = 0;
+    liabilitiesRaw.forEach((liability: any) => {
+      const amt = Number(liability.amount) || 0;
+      // interest_rate might be '5%' or '5'
+      const rawRate = liability.interest_rate || '';
+      const rateNum = parseFloat(rawRate.toString().replace('%', ''));
+      if (amt > 0 && !isNaN(rateNum) && rateNum > 0) {
+        // Assuming rate is annual percentage, monthly is divided by 12
+        const monthlyInterest = (amt * (rateNum / 100)) / 12;
+        totalMonthlyInterest += monthlyInterest;
+      }
+    });
+
+    if (totalMonthlyInterest > 0) {
+      otherExpenses.push({
+        category: 'Liability Interest (Monthly)',
+        amount: totalMonthlyInterest
+      });
+    }
+
+    const totalSales = salesByCategory.reduce((sum, item) => sum + item.sales, 0);
+    const totalCogs = salesByCategory.reduce((sum, item) => sum + item.cogs, 0);
+    const grossProfit = totalSales - totalCogs;
+    
+    const totalLabor = laborExpenses.reduce((sum: number, item: any) => sum + item.amount, 0);
+    const totalOther = otherExpenses.reduce((sum: number, item: any) => sum + item.amount, 0);
+    const netIncome = grossProfit - totalLabor - totalOther;
+
+    return successResponse(res, {
+      salesByCategory,
+      totalSales,
+      totalCogs,
+      grossProfit,
+      laborExpenses,
+      totalLabor,
+      otherExpenses,
+      totalOther,
+      netIncome
+    });
+
+  } catch (error) {
+    console.error('Operational PNL Error:', error);
+    return errorResponse(res, 'Failed to generate operational PNL', 500, error);
+  }
+};

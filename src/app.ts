@@ -145,6 +145,23 @@ const initDistributionEngine = async () => {
             if (err.errno !== 1061) console.error("Sales Order Salesman Constraint:", err.message);
         }
 
+        // 🛡️ OPERATIONAL EXPENSES SYNC
+        try {
+            await pool.execute(`
+                CREATE TABLE IF NOT EXISTS operational_expenses (
+                    expense_id INT AUTO_INCREMENT PRIMARY KEY,
+                    type ENUM('Labor Expense', 'Other Expense') NOT NULL,
+                    category VARCHAR(255) NOT NULL,
+                    amount DECIMAL(15, 3) NOT NULL,
+                    expense_date DATE NOT NULL,
+                    description TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                ) ENGINE=InnoDB
+            `);
+        } catch (err: any) {
+            console.error("Operational Expenses Table Sync:", err.message);
+        }
+
         console.log("🚚 Distribution Branch Hub: INITIALIZED & READY. 🛡️🚀");
     } catch (err) {
         console.error("⛔ Distribution Initialization Barrier:", err);
