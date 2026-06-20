@@ -1,6 +1,3 @@
-CREATE DATABASE IF NOT EXISTS fresh_n_fast_db;
-USE fresh_n_fast_db;
-
 -- SET TIMEZONE
 SET time_zone = '+03:00';
 
@@ -16,6 +13,33 @@ CREATE TABLE IF NOT EXISTS roles (
   deleted_at TIMESTAMP NULL,
   INDEX idx_role_name (role_name)
 ) ENGINE=InnoDB;
+-- 1.2 Brands Table (Multi-Brand Support)
+CREATE TABLE IF NOT EXISTS brands (
+  brand_id INT AUTO_INCREMENT PRIMARY KEY,
+  name_en VARCHAR(255) NOT NULL,
+  name_ar VARCHAR(255) NOT NULL,
+  status ENUM('active', 'inactive') DEFAULT 'active',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deleted_at TIMESTAMP NULL
+) ENGINE=InnoDB;
+
+-- 1.5 Branches Table (Multi-Location Support)
+CREATE TABLE IF NOT EXISTS branches (
+  branch_id INT AUTO_INCREMENT PRIMARY KEY,
+  brand_id INT NULL,
+  name_en VARCHAR(255) NOT NULL,
+  name_ar VARCHAR(255) NOT NULL,
+  location_en TEXT,
+  location_ar TEXT,
+  phone VARCHAR(20),
+  status ENUM('active', 'inactive') DEFAULT 'active',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deleted_at TIMESTAMP NULL,
+  FOREIGN KEY (brand_id) REFERENCES brands(brand_id),
+  INDEX idx_branch_name (name_en)
+) ENGINE=InnoDB;
 
 -- 2. Admins Table
 CREATE TABLE IF NOT EXISTS admins (
@@ -24,6 +48,8 @@ CREATE TABLE IF NOT EXISTS admins (
   email VARCHAR(100) NOT NULL UNIQUE,
   password VARCHAR(255) NOT NULL,
   role_id INT,
+  branch_id INT NULL,
+  brand_id INT NULL,
   first_name VARCHAR(50),
   last_name VARCHAR(50),
   status ENUM('active', 'inactive', 'suspended') DEFAULT 'active',
@@ -31,6 +57,8 @@ CREATE TABLE IF NOT EXISTS admins (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deleted_at TIMESTAMP NULL,
   FOREIGN KEY (role_id) REFERENCES roles(role_id),
+  FOREIGN KEY (branch_id) REFERENCES branches(branch_id),
+  FOREIGN KEY (brand_id) REFERENCES brands(brand_id),
   INDEX idx_admin_username (username),
   INDEX idx_admin_email (email)
 ) ENGINE=InnoDB;
@@ -66,21 +94,6 @@ CREATE TABLE IF NOT EXISTS vendors (
   INDEX idx_vendor_name (name_en)
 ) ENGINE=InnoDB;
 
--- 4.5 Branches Table (Multi-Location Support)
-CREATE TABLE IF NOT EXISTS branches (
-  branch_id INT AUTO_INCREMENT PRIMARY KEY,
-  name_en VARCHAR(255) NOT NULL,
-  name_ar VARCHAR(255) NOT NULL,
-  location_en TEXT,
-  location_ar TEXT,
-  phone VARCHAR(20),
-  status ENUM('active', 'inactive') DEFAULT 'active',
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  deleted_at TIMESTAMP NULL,
-  INDEX idx_branch_name (name_en)
-) ENGINE=InnoDB;
-
 -- 4. Products Table
 CREATE TABLE IF NOT EXISTS products (
   product_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -110,6 +123,7 @@ CREATE TABLE IF NOT EXISTS products (
 -- 5. Inventory Items (Raw Materials / Stock)
 CREATE TABLE IF NOT EXISTS inventory_items (
   inventory_item_id INT AUTO_INCREMENT PRIMARY KEY,
+  brand_id INT NULL,
   name_en VARCHAR(255) NOT NULL,
   name_ar VARCHAR(255) NOT NULL,
   sku VARCHAR(50) UNIQUE,
@@ -124,6 +138,7 @@ CREATE TABLE IF NOT EXISTS inventory_items (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deleted_at TIMESTAMP NULL,
   FOREIGN KEY (category_id) REFERENCES categories(category_id),
+  FOREIGN KEY (brand_id) REFERENCES brands(brand_id),
   INDEX idx_inv_sku (sku),
   INDEX idx_inv_sort (sort_order)
 ) ENGINE=InnoDB;
@@ -143,11 +158,56 @@ CREATE TABLE IF NOT EXISTS inventory_item_packages (
   INDEX idx_pkg_item (inventory_item_id)
 ) ENGINE=InnoDB;
 
+-- 12. Menu Items (Selling Products)
+CREATE TABLE IF NOT EXISTS menu_items (
+  menu_item_id INT AUTO_INCREMENT PRIMARY KEY,
+  brand_id INT NULL,
+  category_id INT,
+  name_en VARCHAR(255) NOT NULL,
+  name_ar VARCHAR(255) NOT NULL,
+  barcode VARCHAR(255) DEFAULT NULL,
+  unit_en VARCHAR(20) DEFAULT NULL,
+  unit_ar VARCHAR(20) DEFAULT NULL,
+  yield_quantity DECIMAL(10,3) DEFAULT 1.000,
+  description_en TEXT,
+  description_ar TEXT,
+  price DECIMAL(10,3) NOT NULL DEFAULT 0.000,
+  cost_price DECIMAL(10,3) NOT NULL DEFAULT 0.000,
+  type ENUM('selling', 'premix') DEFAULT 'selling',
+  image_url VARCHAR(255),
+  status ENUM('available', 'unavailable') DEFAULT 'available',
+  sort_order INT DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deleted_at TIMESTAMP NULL,
+  FOREIGN KEY (category_id) REFERENCES categories(category_id),
+  FOREIGN KEY (brand_id) REFERENCES brands(brand_id),
+) ENGINE=InnoDB;
+
+-- 12.5 Branch-Specific Menu Items (Pricing Overrides & Availability)
+CREATE TABLE IF NOT EXISTS branch_menu_items (
+  branch_menu_id INT AUTO_INCREMENT PRIMARY KEY,
+  branch_id INT NOT NULL,
+  menu_item_id INT NOT NULL,
+  custom_price DECIMAL(10,3) DEFAULT NULL, -- NULL means fallback to menu_items.price
+  status ENUM('available', 'unavailable') DEFAULT 'available',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (branch_id) REFERENCES branches(branch_id),
+  FOREIGN KEY (menu_item_id) REFERENCES menu_items(menu_item_id) ON DELETE CASCADE,
+  UNIQUE KEY uq_branch_menu (branch_id, menu_item_id)
+) ENGINE=InnoDB;
+
 -- 6. Sales Orders
 CREATE TABLE IF NOT EXISTS sales_orders (
-  sales_order_id INT AUTO_INCREMENT PRIMARY KEY,
+  sale_id INT AUTO_INCREMENT PRIMARY KEY,
+  branch_id INT NOT NULL,
+  brand_id INT NULL,
   order_number VARCHAR(50) NOT NULL UNIQUE,
   reference_order_number VARCHAR(100),
+  order_type ENUM('walk_in', 'delivery', 'takeaway', 'b2b') DEFAULT 'walk_in',
+  payment_method ENUM('cash', 'card', 'online', 'credit') DEFAULT 'cash',
+  payment_status ENUM('paid', 'credit', 'pending', 'failed') DEFAULT 'paid',
   customer_name VARCHAR(255),
   client_phone VARCHAR(50),
   client_address TEXT,
@@ -158,9 +218,24 @@ CREATE TABLE IF NOT EXISTS sales_orders (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deleted_at TIMESTAMP NULL,
+  FOREIGN KEY (branch_id) REFERENCES branches(branch_id),
   FOREIGN KEY (admin_id) REFERENCES admins(admin_id),
+  FOREIGN KEY (brand_id) REFERENCES brands(brand_id),
   INDEX idx_sales_order_num (order_number),
   INDEX idx_sales_status (status)
+) ENGINE=InnoDB;
+
+-- 6.5 Sales Order Items
+CREATE TABLE IF NOT EXISTS sales_order_items (
+  item_id INT AUTO_INCREMENT PRIMARY KEY,
+  sale_id INT,
+  menu_item_id INT,
+  quantity DECIMAL(10,3) NOT NULL,
+  price DECIMAL(10,3) NOT NULL,
+  expiry_date DATE NULL,
+  batch_number VARCHAR(50) NULL,
+  FOREIGN KEY (sale_id) REFERENCES sales_orders(sale_id) ON DELETE CASCADE,
+  FOREIGN KEY (menu_item_id) REFERENCES menu_items(menu_item_id)
 ) ENGINE=InnoDB;
 
 -- 7. Wastage Tracking
@@ -217,13 +292,22 @@ INSERT IGNORE INTO roles (role_name, display_name_en, display_name_ar) VALUES
 ('sales_dispatch', 'Sales & Dispatch', 'المبيعات والتوزيع');
 
 INSERT IGNORE INTO admins (username, email, password, role_id, first_name) 
-VALUES ('admin', 'admin@freshnfast.com', '$2b$10$YourHashedPasswordHere', 1, 'Main Admin');
+VALUES ('admin', 'admin@ansoftt.com', '$2b$10$YourHashedPasswordHere', 1, 'Main Admin');
 
 INSERT IGNORE INTO system_settings (setting_key, setting_value, description) VALUES 
 ('app_version', '1.0.0', 'Current application version'),
 ('force_update', 'false', 'Whether to force app update'),
 ('currency_code', 'KWD', 'Default currency'),
 ('currency_symbol', 'د.ك', 'Currency symbol'),
+('currency_decimals', '3', 'Currency decimals (2 or 3)'),
+('country_phone_code', '+965', 'Country phone code'),
+('order_prefix', 'ORD-', 'Prefix for order numbers'),
+('company_name', 'Ansoftt', 'Tenant Company Name'),
+('company_arabic_name', 'أنسوفت', 'Arabic Company Name'),
+('company_address', 'Kuwait City', 'Company Address'),
+('company_phone', '+965 12345678', 'Company Phone'),
+('company_email', 'info@ansoftt.com', 'Company Email'),
+('business_type', 'restaurant_pos', 'Type of business (restaurant_pos, central_kitchen, b2b)'),
 ('timezone', 'Asia/Kuwait', 'System timezone');
 
 -- 10. Purchase Orders Table
@@ -281,37 +365,20 @@ CREATE TABLE IF NOT EXISTS purchase_order_items (
 INSERT IGNORE INTO branches (name_en, name_ar, location_en, location_ar, phone) 
 VALUES ('Main Branch', 'الفرع الرئيسي', 'Warehouse Area', 'منطقة المستودعات', '+965-00000000');
 
--- 12. Menu Items (Selling Products)
-CREATE TABLE IF NOT EXISTS menu_items (
-  menu_item_id INT AUTO_INCREMENT PRIMARY KEY,
-  category_id INT,
-  name_en VARCHAR(255) NOT NULL,
-  name_ar VARCHAR(255) NOT NULL,
-  description_en TEXT,
-  description_ar TEXT,
-  price DECIMAL(10,3) NOT NULL DEFAULT 0.000,
-  cost_price DECIMAL(10,3) NOT NULL DEFAULT 0.000,
-  type ENUM('selling', 'premix') DEFAULT 'selling',
-  image_url VARCHAR(255),
-  status ENUM('available', 'unavailable') DEFAULT 'available',
-  sort_order INT DEFAULT 0,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  deleted_at TIMESTAMP NULL,
-  FOREIGN KEY (category_id) REFERENCES categories(category_id),
-  INDEX idx_menu_name (name_en)
-) ENGINE=InnoDB;
+
 
 -- 13. Menu Item Ingredients (Recipe System)
 CREATE TABLE IF NOT EXISTS menu_item_ingredients (
   ingredient_id INT AUTO_INCREMENT PRIMARY KEY,
   menu_item_id INT,
-  inventory_item_id INT,
+  inventory_item_id INT NULL,
+  sub_menu_item_id INT NULL,
   package_id INT NULL,
   quantity DECIMAL(10,3) NOT NULL,
   unit_en VARCHAR(20),
-  FOREIGN KEY (menu_item_id) REFERENCES menu_items(menu_item_id),
-  FOREIGN KEY (inventory_item_id) REFERENCES inventory_items(inventory_item_id)
+  FOREIGN KEY (menu_item_id) REFERENCES menu_items(menu_item_id) ON DELETE CASCADE,
+  FOREIGN KEY (inventory_item_id) REFERENCES inventory_items(inventory_item_id) ON DELETE SET NULL,
+  FOREIGN KEY (sub_menu_item_id) REFERENCES menu_items(menu_item_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 -- 14. Company Assets (Balance Sheet)
@@ -354,4 +421,53 @@ CREATE TABLE IF NOT EXISTS employees (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deleted_at TIMESTAMP NULL
+) ENGINE=InnoDB;
+
+-- 17. Stock Transfers
+CREATE TABLE IF NOT EXISTS stock_transfers (
+  transfer_id INT AUTO_INCREMENT PRIMARY KEY,
+  from_branch_id INT NULL,
+  to_branch_id INT NOT NULL,
+  status ENUM('pending', 'completed', 'cancelled') DEFAULT 'pending',
+  notes TEXT,
+  created_by INT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (from_branch_id) REFERENCES branches(branch_id),
+  FOREIGN KEY (to_branch_id) REFERENCES branches(branch_id),
+  FOREIGN KEY (created_by) REFERENCES admins(admin_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS stock_transfer_items (
+  transfer_item_id INT AUTO_INCREMENT PRIMARY KEY,
+  transfer_id INT NOT NULL,
+  inventory_item_id INT NOT NULL,
+  quantity DECIMAL(10,3) NOT NULL,
+  FOREIGN KEY (transfer_id) REFERENCES stock_transfers(transfer_id) ON DELETE CASCADE,
+  FOREIGN KEY (inventory_item_id) REFERENCES inventory_items(inventory_item_id)
+) ENGINE=InnoDB;
+
+-- 18. Branch Stock (Multi-Location Inventory Tracking)
+CREATE TABLE IF NOT EXISTS branch_stock (
+  branch_stock_id INT AUTO_INCREMENT PRIMARY KEY,
+  branch_id INT NOT NULL,
+  inventory_item_id INT NOT NULL,
+  quantity DECIMAL(10,3) NOT NULL DEFAULT 0.000,
+  FOREIGN KEY (branch_id) REFERENCES branches(branch_id),
+  FOREIGN KEY (inventory_item_id) REFERENCES inventory_items(inventory_item_id),
+  UNIQUE KEY idx_branch_item (branch_id, inventory_item_id)
+) ENGINE=InnoDB;
+
+-- 19. Operational Expenses
+CREATE TABLE IF NOT EXISTS operational_expenses (
+  expense_id INT AUTO_INCREMENT PRIMARY KEY,
+  branch_id INT NULL,
+  type VARCHAR(100) NOT NULL,
+  category VARCHAR(255) NOT NULL,
+  amount DECIMAL(10,3) NOT NULL DEFAULT 0.000,
+  expense_date DATE NOT NULL,
+  description TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (branch_id) REFERENCES branches(branch_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;

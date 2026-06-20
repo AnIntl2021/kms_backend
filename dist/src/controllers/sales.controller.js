@@ -12,41 +12,55 @@ export const getSales = async (req, res) => {
           AND deleted_at IS NULL
         `);
         */
-        const [rows] = await pool.execute(`
+        const user = req.user;
+        let query = `
       SELECT s.*, 
       (SELECT COUNT(*) FROM sales_order_items WHERE sale_id = s.sale_id) as items_count,
       IFNULL((SELECT SUM(total_credit_amount) FROM sales_returns WHERE sale_id = s.sale_id), 0) as returns_amount,
-      (
-        SELECT JSON_ARRAYAGG(
-          JSON_OBJECT(
-            'menu_item_id', soi.menu_item_id, 
-            'name_en', mi.name_en, 
-            'quantity', soi.quantity,
-            'returns_qty', (
-               SELECT COALESCE(SUM(sri.quantity), 0) 
-               FROM sales_return_items sri 
-               JOIN sales_returns sr ON sri.return_id = sr.return_id 
-               WHERE sri.menu_item_id = soi.menu_item_id AND sr.sale_id = s.sale_id
-            )
-          )
-        )
+      DATE_FORMAT(s.created_at, '%Y-%m-%d') as dispatch_date,
+      b.name_en as branch_name,
+      b.phone as branch_phone,
+      s.client_phone as client_phone,
+      a.first_name as salesman_name,
+      s.payment_method
+      FROM sales_orders s 
+      LEFT JOIN branches b ON s.branch_id = b.branch_id
+      LEFT JOIN admins a ON s.admin_id = a.admin_id
+      WHERE s.deleted_at IS NULL
+    `;
+        const params = [];
+        if (user && user.brand_id) {
+            query += ' AND s.brand_id = ?';
+            params.push(user.brand_id);
+        }
+        else if (req.query.brand_id) {
+            query += ' AND s.brand_id = ?';
+            params.push(req.query.brand_id);
+        }
+        if (user && user.branch_id) {
+            query += ' AND s.branch_id = ?';
+            params.push(user.branch_id);
+        }
+        query += ' ORDER BY s.created_at DESC, s.sale_id DESC';
+        const [rows] = await pool.execute(query, params);
+        if (rows.length > 0) {
+            const saleIds = rows.map((r) => r.sale_id);
+            const [items] = await pool.execute(`
+        SELECT soi.sale_id, soi.menu_item_id, mi.name_en, soi.quantity,
+          (
+             SELECT COALESCE(SUM(sri.quantity), 0) 
+             FROM sales_return_items sri 
+             JOIN sales_returns sr ON sri.return_id = sr.return_id 
+             WHERE sri.menu_item_id = soi.menu_item_id AND sr.sale_id = soi.sale_id
+          ) as returns_qty
         FROM sales_order_items soi
         JOIN menu_items mi ON soi.menu_item_id = mi.menu_item_id
-        WHERE soi.sale_id = s.sale_id
-      ) as items_json,
-      DATE_FORMAT(s.created_at, '%Y-%m-%d') as dispatch_date,
-      pb.name_en as branch_name,
-      pb.phone as branch_phone,
-      IFNULL(s.client_phone, v.phone) as client_phone,
-      sm.name_en as salesman_name,
-      sm.phone as salesman_phone
-      FROM sales_orders s 
-      LEFT JOIN partner_branches pb ON s.branch_id = pb.branch_id
-      LEFT JOIN vendors v ON s.vendor_id = v.vendor_id
-      LEFT JOIN salesmen sm ON s.salesman_id = sm.salesman_id
-      WHERE s.deleted_at IS NULL
-      ORDER BY s.created_at DESC, s.sale_id DESC
-    `);
+        WHERE soi.sale_id IN (${saleIds.join(',')})
+      `);
+            rows.forEach((row) => {
+                row.items_json = JSON.stringify(items.filter((i) => i.sale_id === row.sale_id));
+            });
+        }
         return successResponse(res, rows);
     }
     catch (error) {
@@ -60,15 +74,14 @@ export const getSaleById = async (req, res) => {
       SELECT s.*, 
              DATE_FORMAT(s.created_at, '%Y-%m-%d') as order_date,
              DATE_FORMAT(s.created_at, '%Y-%m-%d') as dispatch_date,
-             pb.name_en as branch_name,
-             pb.phone as branch_phone,
-             IFNULL(s.client_phone, v.phone) as client_phone,
-             sm.name_en as salesman_name,
-             sm.phone as salesman_phone
+             b.name_en as branch_name,
+             b.phone as branch_phone,
+             s.client_phone as client_phone,
+             a.first_name as salesman_name,
+             s.payment_method
       FROM sales_orders s 
-      LEFT JOIN partner_branches pb ON s.branch_id = pb.branch_id
-      LEFT JOIN vendors v ON s.vendor_id = v.vendor_id
-      LEFT JOIN salesmen sm ON s.salesman_id = sm.salesman_id
+      LEFT JOIN branches b ON s.branch_id = b.branch_id
+      LEFT JOIN admins a ON s.admin_id = a.admin_id
       WHERE s.sale_id = ?
     `, [id]);
         if (orders.length === 0)
@@ -89,12 +102,22 @@ export const getSaleById = async (req, res) => {
 export const createSale = async (req, res) => {
     const connection = await pool.getConnection();
     try {
-        const { vendor_id, branch_id, customer_name, client_phone, client_address, reference_order_number, notes, items, total_amount, payment_status, dispatch_status, batch_number, expiry_date, dispatch_date } = req.body;
+        const { branch_id, customer_name, client_phone, client_address, notes, items, total_amount, order_type, payment_method, payment_status, counter_id } = req.body;
         const admin_id = req.user?.admin_id || 1;
+        let brandId = req.user?.brand_id || null;
         await connection.beginTransaction();
-        const [orderRes] = await connection.execute('INSERT INTO sales_orders (order_number, reference_order_number, vendor_id, branch_id, customer_name, client_phone, client_address, notes, total_amount, payment_status, dispatch_status, batch_number, expiry_date, admin_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', ['PENDING', reference_order_number || null, vendor_id || null, (branch_id === 'main' ? null : branch_id) || null, customer_name, client_phone || null, client_address || null, notes || null, total_amount, payment_status || 'credit', dispatch_status || 'pending', batch_number || null, expiry_date || null, admin_id, dispatch_date || new Date()]);
+        if (!brandId && branch_id) {
+            const [branchRows] = await connection.execute('SELECT brand_id FROM branches WHERE branch_id = ?', [branch_id]);
+            if (branchRows && branchRows.length > 0) {
+                brandId = branchRows[0].brand_id;
+            }
+        }
+        const [orderRes] = await connection.execute('INSERT INTO sales_orders (order_number, branch_id, order_type, payment_method, payment_status, customer_name, client_phone, client_address, notes, total_amount, status, admin_id, brand_id, counter_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', ['PENDING', branch_id || 1, order_type || 'walk_in', payment_method || 'cash', payment_status || (payment_method === 'credit' ? 'credit' : 'paid'), customer_name || null, client_phone || null, client_address || null, notes || null, total_amount, 'completed', admin_id, brandId, counter_id || null]);
         const sale_id = orderRes.insertId;
-        const order_number = `FNFI-${100000 + sale_id}`;
+        // Fetch order number prefix dynamically from settings
+        const [settingsRows] = await connection.execute("SELECT setting_value FROM system_settings WHERE setting_key = 'order_prefix'");
+        const prefix = (settingsRows && settingsRows.length > 0) ? settingsRows[0].setting_value : 'ORD-';
+        const order_number = `${prefix}${100000 + sale_id}`;
         // Update the record with the professional order number
         await connection.execute('UPDATE sales_orders SET order_number = ? WHERE sale_id = ?', [order_number, sale_id]);
         for (const item of items) {
@@ -138,7 +161,7 @@ export const createSale = async (req, res) => {
         }
         await connection.commit();
         console.log('✅ Sale created successfully:', sale_id);
-        return successResponse(res, { sale_id }, 'Sale recorded successfully');
+        return successResponse(res, { sale_id, order_number }, 'Sale recorded successfully');
     }
     catch (error) {
         if (connection)

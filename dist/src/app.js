@@ -37,6 +37,27 @@ const initFIFOEngine = async () => {
         console.error("⛔ FIFO Initialization Barrier:", err);
     }
 };
+const initTenantEngine = async () => {
+    try {
+        await pool.execute(`
+            CREATE TABLE IF NOT EXISTS tenants (
+                tenant_id INT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                contact_email VARCHAR(255) DEFAULT NULL,
+                contact_phone VARCHAR(50) DEFAULT NULL,
+                plan ENUM('Basic', 'Pro', 'Enterprise') DEFAULT 'Basic',
+                status ENUM('Active', 'Inactive') DEFAULT 'Active',
+                db_name VARCHAR(100) NOT NULL UNIQUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
+        console.log("🏢 SaaS Tenant Engine: INITIALIZED & READY. 🚀");
+    }
+    catch (err) {
+        console.error("⛔ Tenant Initialization Barrier:", err);
+    }
+};
 const initDistributionEngine = async () => {
     try {
         await pool.execute(`
@@ -181,8 +202,9 @@ const initDistributionEngine = async () => {
         console.error("⛔ Distribution Initialization Barrier:", err);
     }
 };
-initFIFOEngine();
-initDistributionEngine();
+initTenantEngine();
+// FIFO and Distribution tables are initialized directly via schema.sql and migrations in tenant databases.
+// We disable these startup syncs because kms_master is now a clean control DB and does not contain operational tables.
 // Middlewares
 app.use(helmet({
     contentSecurityPolicy: false,
@@ -192,11 +214,11 @@ app.use(helmet({
 const allowedOrigins = [
     'http://localhost:5173',
     'http://localhost:5177',
-    config.corsOrigin, // Auto-read from .env.production (https://freshnfastkw.com)
-    'https://freshnfastkw.com',
-    'https://www.freshnfastkw.com',
-    'https://api.freshnfastkw.com',
-    'https://erp.freshnfastkw.com'
+    'http://localhost:5176', // Front-end dev port from package.json script
+    config.corsOrigin, // Auto-read from .env.production
+    'https://kms.ansoftt.com',
+    'https://api.kms.ansoftt.com',
+    'https://admin.kms.ansoftt.com'
 ];
 app.use(cors({
     origin: (origin, callback) => {
@@ -224,6 +246,7 @@ app.get('/health', (req, res) => {
     res.status(200).json({ status: 'OK', env: config.env });
 });
 // Routes
+app.get('/api/debug-db', async (req, res) => { const [rows] = await pool.query('SELECT DATABASE() as db'); res.json(rows[0]); });
 app.use('/api', routes);
 // 404 Handler
 app.use((req, res) => {

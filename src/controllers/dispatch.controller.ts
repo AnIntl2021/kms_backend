@@ -8,19 +8,12 @@ export const updateDispatchStatus = async (req: Request, res: Response) => {
     const { status } = req.body; // pending, in_transit, delivered
     
     const [result]: any = await pool.execute(
-      'UPDATE sales_orders SET dispatch_status = ? WHERE sale_id = ?',
+      'UPDATE sales_orders SET status = ? WHERE sales_order_id = ?',
       [status, id]
     );
 
     if (result.affectedRows === 0) {
-       // Try with sales_order_id if sale_id didn't match
-       const [retry]: any = await pool.execute(
-         'UPDATE sales_orders SET dispatch_status = ? WHERE sales_order_id = ?',
-         [status, id]
-       );
-       if (retry.affectedRows === 0) {
-         return errorResponse(res, `No order found with ID ${id}`, 404);
-       }
+      return errorResponse(res, `No order found with ID ${id}`, 404);
     }
 
     return successResponse(res, null, `Order status updated to ${status}`);

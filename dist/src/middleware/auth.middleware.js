@@ -1,5 +1,6 @@
 import { verifyToken } from '../utils/jwt';
 import { errorResponse } from '../utils/response';
+import { tenantContext } from './tenantContext';
 export const authMiddleware = (req, res, next) => {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -11,7 +12,10 @@ export const authMiddleware = (req, res, next) => {
         return errorResponse(res, 'Invalid or expired token', 401);
     }
     req.user = decoded;
-    next();
+    // Wrap the rest of the request in the tenant context
+    tenantContext.run({ dbName: decoded.tenant_db || 'kms_master' }, () => {
+        next();
+    });
 };
 export const authorize = (allowedRolesOrPermissions) => {
     return (req, res, next) => {
@@ -28,4 +32,14 @@ export const authorize = (allowedRolesOrPermissions) => {
         }
         next();
     };
+};
+export const restoreTenantContext = (req, res, next) => {
+    if (req.user && req.user.tenant_db) {
+        tenantContext.run({ dbName: req.user.tenant_db }, () => {
+            next();
+        });
+    }
+    else {
+        next();
+    }
 };

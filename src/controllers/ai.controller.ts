@@ -130,10 +130,22 @@ export const chatWithAI = async (req: Request, res: Response): Promise<any> => {
         
         const userMessage = messages[messages.length - 1].text;
 
+        // Fetch company name and currency code from system settings dynamically
+        const [settingsRows]: any = await pool.execute(
+            "SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('company_name', 'currency_code')"
+        );
+        const systemConfigs = (settingsRows || []).reduce((acc: any, curr: any) => {
+            acc[curr.setting_key] = curr.setting_value;
+            return acc;
+        }, { company_name: 'KMS', currency_code: 'KWD' });
+
+        const companyName = systemConfigs.company_name;
+        const currencyCode = systemConfigs.currency_code;
+
         const chat = ai.chats.create({
             model: 'gemini-flash-lite-latest',
             config: {
-                systemInstruction: "You are the Fresh 'n' Fast ERP Personal Assistant. Answer questions accurately and concisely. Use tools to query system data when asked about menu, prices, or sales. For general questions like recipes, provide standard information but mention prices in KWD where appropriate. Respond in the same language as the user (English or Arabic).",
+                systemInstruction: `You are the ${companyName} ERP Personal Assistant. Answer questions accurately and concisely. Use tools to query system data when asked about menu, prices, or sales. For general questions like recipes, provide standard information but mention prices in ${currencyCode} where appropriate. Respond in the same language as the user (English or Arabic).`,
                 tools: [{ functionDeclarations: tools }],
             }
         });

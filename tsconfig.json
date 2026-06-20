@@ -14,8 +14,8 @@
     "resolveJsonModule": true,
     "verbatimModuleSyntax": false
   },
-  "include": ["src/**/*", "repair_db.ts", "*.ts"],
-  "exclude": ["node_modules"],
+  "include": ["src/**/*", "repair_db.ts"],
+  "exclude": ["node_modules", "dist", "**/*.spec.ts"],
   "ts-node": {
     "esm": true,
     "experimentalSpecifierResolution": "node"

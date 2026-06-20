@@ -2,13 +2,44 @@ import { successResponse, errorResponse } from '../utils/response';
 import pool from '../config/db';
 export const getMenuItems = async (req, res) => {
     try {
-        const [items] = await pool.execute(`
-      SELECT mi.*, c.name_en as category_name 
+        const user = req.user;
+        const branchId = user?.branch_id || req.query.branch_id || null;
+        const isPOS = req.query.pos === 'true';
+        let selectFields = `mi.*, c.name_en as category_name`;
+        let joinClause = ``;
+        const params = [];
+        if (branchId) {
+            selectFields = `
+        mi.menu_item_id, mi.brand_id, mi.category_id, mi.name_en, mi.name_ar, mi.barcode, mi.unit_en, mi.unit_ar, mi.yield_quantity, mi.description_en, mi.description_ar, mi.cost_price, mi.type, mi.image_url, mi.sort_order, mi.created_at, mi.updated_at, mi.deleted_at,
+        COALESCE(bmi.custom_price, mi.price) as price,
+        COALESCE(bmi.status, mi.status) as status,
+        bmi.custom_price as branch_custom_price,
+        bmi.status as branch_status,
+        c.name_en as category_name
+      `;
+            joinClause = `LEFT JOIN branch_menu_items bmi ON mi.menu_item_id = bmi.menu_item_id AND bmi.branch_id = ?`;
+            params.push(branchId);
+        }
+        let query = `
+      SELECT ${selectFields}
       FROM menu_items mi
       LEFT JOIN categories c ON mi.category_id = c.category_id
+      ${joinClause}
       WHERE mi.deleted_at IS NULL
-      ORDER BY mi.sort_order ASC, mi.name_en ASC
-    `);
+    `;
+        if (user && user.brand_id) {
+            query += ' AND mi.brand_id = ?';
+            params.push(user.brand_id);
+        }
+        else if (req.query.brand_id) {
+            query += ' AND mi.brand_id = ?';
+            params.push(req.query.brand_id);
+        }
+        if (branchId && isPOS) {
+            query += " AND COALESCE(bmi.status, mi.status) = 'available'";
+        }
+        query += ' ORDER BY mi.sort_order ASC, mi.name_en ASC';
+        const [items] = await pool.execute(query, params);
         return successResponse(res, items);
     }
     catch (error) {
@@ -32,7 +63,13 @@ export const getMenuItemDetails = async (req, res) => {
       LEFT JOIN menu_items smi ON mii.sub_menu_item_id = smi.menu_item_id
       WHERE mii.menu_item_id = ?
     `, [id]);
-        return successResponse(res, { ...items[0], ingredients });
+        const [branchCustomizations] = await pool.execute(`
+      SELECT bmi.*, b.name_en as branch_name 
+      FROM branch_menu_items bmi 
+      JOIN branches b ON bmi.branch_id = b.branch_id 
+      WHERE bmi.menu_item_id = ?
+    `, [id]);
+        return successResponse(res, { ...items[0], ingredients, branch_customizations: branchCustomizations });
     }
     catch (error) {
         console.error('getMenuItemDetails Error:', error);
@@ -43,8 +80,13 @@ export const createMenuItem = async (req, res) => {
     const connection = await pool.getConnection();
     try {
         await connection.beginTransaction();
+        const user = req.user;
         const { name_en, name_ar, category_id, price, cost_price, description_en, description_ar, type, barcode, unit_en, unit_ar } = req.body;
         let { ingredients } = req.body;
+        let brandId = req.body.brand_id || null;
+        if (user && user.brand_id) {
+            brandId = user.brand_id;
+        }
         // Support Multipart/FormData (ingredients arrive as JSON string)
         if (typeof ingredients === 'string') {
             try {
@@ -57,7 +99,7 @@ export const createMenuItem = async (req, res) => {
         const image_url = req.file ? `/uploads/menu/${req.file.filename}` : null;
         const yield_quantity = Number(req.body.yield_quantity || 1.000);
         // 1. Create Menu Item
-        const [result] = await connection.execute('INSERT INTO menu_items (category_id, name_en, name_ar, barcode, price, unit_en, unit_ar, cost_price, type, description_en, description_ar, image_url, yield_quantity) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
+        const [result] = await connection.execute('INSERT INTO menu_items (category_id, name_en, name_ar, barcode, price, unit_en, unit_ar, cost_price, type, description_en, description_ar, image_url, yield_quantity, brand_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
             category_id || null,
             name_en,
             name_ar,
@@ -70,7 +112,8 @@ export const createMenuItem = async (req, res) => {
             description_en || null,
             description_ar || null,
             image_url,
-            yield_quantity
+            yield_quantity,
+            brandId
         ]);
         const menu_item_id = result.insertId;
         // 2. Add Ingredients (Recipe)
@@ -88,6 +131,26 @@ export const createMenuItem = async (req, res) => {
                 if (!invId && !subMenuId)
                     continue;
                 await connection.execute('INSERT INTO menu_item_ingredients (menu_item_id, inventory_item_id, sub_menu_item_id, package_id, quantity) VALUES (?, ?, ?, ?, ?)', [menu_item_id, invId, subMenuId, ing.package_id || null, ing.quantity]);
+            }
+        }
+        // 3. Add Branch Customizations
+        let { branch_customizations } = req.body;
+        if (typeof branch_customizations === 'string') {
+            try {
+                branch_customizations = JSON.parse(branch_customizations);
+            }
+            catch (e) {
+                branch_customizations = [];
+            }
+        }
+        if (branch_customizations && Array.isArray(branch_customizations)) {
+            for (const custom of branch_customizations) {
+                const hasCustomPrice = custom.custom_price !== undefined && custom.custom_price !== '' && custom.custom_price !== null;
+                const isUnavailable = custom.status === 'unavailable';
+                if (hasCustomPrice || isUnavailable) {
+                    const cPrice = hasCustomPrice ? Number(custom.custom_price) : null;
+                    await connection.execute('INSERT INTO branch_menu_items (branch_id, menu_item_id, custom_price, status) VALUES (?, ?, ?, ?)', [custom.branch_id, menu_item_id, cPrice, custom.status || 'available']);
+                }
             }
         }
         await connection.commit();
@@ -156,6 +219,27 @@ export const updateMenuItem = async (req, res) => {
                 if (!invId && !subMenuId)
                     continue;
                 await connection.execute('INSERT INTO menu_item_ingredients (menu_item_id, inventory_item_id, sub_menu_item_id, package_id, quantity) VALUES (?, ?, ?, ?, ?)', [id, invId, subMenuId, ing.package_id || null, ing.quantity]);
+            }
+        }
+        // 4. Update Branch Customizations (Delete and Re-insert)
+        await connection.execute('DELETE FROM branch_menu_items WHERE menu_item_id = ?', [id]);
+        let { branch_customizations } = req.body;
+        if (typeof branch_customizations === 'string') {
+            try {
+                branch_customizations = JSON.parse(branch_customizations);
+            }
+            catch (e) {
+                branch_customizations = [];
+            }
+        }
+        if (branch_customizations && Array.isArray(branch_customizations)) {
+            for (const custom of branch_customizations) {
+                const hasCustomPrice = custom.custom_price !== undefined && custom.custom_price !== '' && custom.custom_price !== null;
+                const isUnavailable = custom.status === 'unavailable';
+                if (hasCustomPrice || isUnavailable) {
+                    const cPrice = hasCustomPrice ? Number(custom.custom_price) : null;
+                    await connection.execute('INSERT INTO branch_menu_items (branch_id, menu_item_id, custom_price, status) VALUES (?, ?, ?, ?)', [custom.branch_id, id, cPrice, custom.status || 'available']);
+                }
             }
         }
         await connection.commit();

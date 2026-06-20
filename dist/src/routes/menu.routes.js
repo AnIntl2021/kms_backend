@@ -1,12 +1,12 @@
 import { Router } from 'express';
 import { getMenuItems, getMenuItemDetails, createMenuItem, updateMenuItem, deleteMenuItem } from '../controllers/menu.controller';
-import { authMiddleware, authorize } from '../middleware/auth.middleware';
+import { authMiddleware, authorize, restoreTenantContext } from '../middleware/auth.middleware';
 import { upload } from '../middleware/upload.middleware';
 const router = Router();
 router.use(authMiddleware);
 router.get('/', getMenuItems);
 router.get('/:id', getMenuItemDetails);
-router.post('/', authorize(['super_admin', 'manager']), upload.single('image'), createMenuItem);
-router.put('/:id', authorize(['super_admin', 'manager']), upload.single('image'), updateMenuItem);
-router.delete('/:id', authorize(['super_admin']), deleteMenuItem);
+router.post('/', authorize(['super_admin', 'manager', 'Admin', 'inventory']), upload.single('image'), restoreTenantContext, createMenuItem);
+router.put('/:id', authorize(['super_admin', 'manager', 'Admin', 'inventory']), upload.single('image'), restoreTenantContext, updateMenuItem);
+router.delete('/:id', authorize(['super_admin', 'Admin', 'inventory']), deleteMenuItem);
 export default router;

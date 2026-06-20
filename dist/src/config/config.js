@@ -16,4 +16,8 @@ export const config = {
     },
     jwtSecret: process.env.JWT_SECRET || 'fallback_secret',
     corsOrigin: process.env.CORS_ORIGIN || '*',
+    razorpay: {
+        keyId: process.env.RAZORPAY_KEY_ID || '',
+        keySecret: process.env.RAZORPAY_KEY_SECRET || '',
+    }
 };

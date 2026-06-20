@@ -2,6 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../utils/jwt';
 import { errorResponse } from '../utils/response';
 
+import { tenantContext } from './tenantContext';
+
 export interface AuthRequest extends Request {
   user?: any;
 }
@@ -21,7 +23,11 @@ export const authMiddleware = (req: AuthRequest, res: Response, next: NextFuncti
   }
 
   req.user = decoded;
-  next();
+  
+  // Wrap the rest of the request in the tenant context
+  tenantContext.run({ dbName: decoded.tenant_db || 'kms_master' }, () => {
+    next();
+  });
 };
 
 export const authorize = (allowedRolesOrPermissions: string[]) => {
@@ -43,4 +49,14 @@ export const authorize = (allowedRolesOrPermissions: string[]) => {
     
     next();
   };
+};
+
+export const restoreTenantContext = (req: AuthRequest, res: Response, next: NextFunction) => {
+  if (req.user && req.user.tenant_db) {
+    tenantContext.run({ dbName: req.user.tenant_db }, () => {
+      next();
+    });
+  } else {
+    next();
+  }
 };

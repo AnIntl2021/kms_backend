@@ -19,13 +19,13 @@ export async function runBackup() {
         }
         // 2. Prepare file name (e.g., backup_2024-05-06.sql)
         const timestamp = new Date().toISOString().split('T')[0];
-        const fileName = `fresh_n_fast_backup_${timestamp}.sql`;
+        const fileName = `kms_backup_${timestamp}.sql`;
         const filePath = path.join(BACKUP_DIR, fileName);
         // 3. Construct mysqldump command
         const host = config.db.host || 'localhost';
         const user = config.db.user || 'root';
         const password = config.db.pass || '';
-        const dbName = config.db.name || 'fresh_n_fast_db';
+        const dbName = config.db.name || 'kms_master';
         // Windows usually needs the password right after -p with no space
         const passPart = password ? `-p${password}` : '';
         const command = `mysqldump -h ${host} -u ${user} ${passPart} ${dbName} > "${filePath}"`;

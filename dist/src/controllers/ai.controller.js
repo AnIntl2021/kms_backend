@@ -15,10 +15,22 @@ const getSalesSummaryDeclaration = {
         properties: {
             period: {
                 type: Type.STRING,
-                description: 'The period to get sales for. Either "today", "this_month", or "all_time".',
+                description: 'The period to get sales for. Can be "today", "this_month", "all_time", or a specific month name like "May".',
             },
+            client_name: {
+                type: Type.STRING,
+                description: 'Optional. The specific client or customer name to get sales for (e.g. "canteen", "john").',
+            }
         },
         required: ['period'],
+    },
+};
+const getBranchPerformanceDeclaration = {
+    name: 'getBranchPerformance',
+    description: 'Get the sales performance (total revenue and orders) grouped by branches. Use this to answer which branch is performing best or worst.',
+    parameters: {
+        type: Type.OBJECT,
+        properties: {},
     },
 };
 // Tool implementations
@@ -35,12 +47,25 @@ const getSalesSummary = async (args) => {
     try {
         let dateCondition = '1=1';
         if (args.period === 'today') {
-            dateCondition = 'DATE(order_date) = CURDATE()';
+            dateCondition = 'DATE(created_at) = CURDATE()';
         }
         else if (args.period === 'this_month') {
-            dateCondition = 'MONTH(order_date) = MONTH(CURDATE()) AND YEAR(order_date) = YEAR(CURDATE())';
+            dateCondition = 'MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE())';
         }
-        const [salesRows] = await pool.query(`SELECT COUNT(*) as total_orders, SUM(net_amount) as total_revenue FROM sales_orders WHERE ${dateCondition} AND status != 'cancelled'`);
+        else if (args.period && args.period !== 'all_time') {
+            const months = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+            const monthIndex = months.findIndex(m => args.period.toLowerCase().includes(m));
+            if (monthIndex !== -1) {
+                dateCondition = `MONTH(created_at) = ${monthIndex + 1} AND YEAR(created_at) = YEAR(CURDATE())`;
+            }
+        }
+        let query = `SELECT COUNT(*) as total_orders, SUM(total_amount) as total_revenue FROM sales_orders WHERE ${dateCondition} AND status != 'cancelled'`;
+        const queryParams = [];
+        if (args.client_name) {
+            query += ` AND customer_name LIKE ?`;
+            queryParams.push(`%${args.client_name}%`);
+        }
+        const [salesRows] = await pool.query(query, queryParams);
         // Return a mock loss rate for now or query actual wastage if needed
         return {
             total_orders: salesRows[0].total_orders || 0,
@@ -53,10 +78,28 @@ const getSalesSummary = async (args) => {
         return { error: 'Failed to fetch sales summary' };
     }
 };
-const tools = [getMenuCatalogDeclaration, getSalesSummaryDeclaration];
+const getBranchPerformance = async () => {
+    try {
+        const query = `
+            SELECT b.name_en as branch_name, COUNT(s.sale_id) as total_orders, SUM(s.total_amount) as total_revenue
+            FROM sales_orders s
+            LEFT JOIN branches b ON s.branch_id = b.branch_id
+            WHERE s.status != 'cancelled'
+            GROUP BY s.branch_id, b.name_en
+            ORDER BY total_revenue DESC
+        `;
+        const [rows] = await pool.query(query);
+        return rows;
+    }
+    catch (e) {
+        return { error: 'Failed to fetch branch performance' };
+    }
+};
+const tools = [getMenuCatalogDeclaration, getSalesSummaryDeclaration, getBranchPerformanceDeclaration];
 const functions = {
     getMenuCatalog,
     getSalesSummary,
+    getBranchPerformance,
 };
 export const chatWithAI = async (req, res) => {
     try {
@@ -73,10 +116,18 @@ export const chatWithAI = async (req, res) => {
             parts: [{ text: m.text }]
         }));
         const userMessage = messages[messages.length - 1].text;
+        // Fetch company name and currency code from system settings dynamically
+        const [settingsRows] = await pool.execute("SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('company_name', 'currency_code')");
+        const systemConfigs = (settingsRows || []).reduce((acc, curr) => {
+            acc[curr.setting_key] = curr.setting_value;
+            return acc;
+        }, { company_name: 'KMS', currency_code: 'KWD' });
+        const companyName = systemConfigs.company_name;
+        const currencyCode = systemConfigs.currency_code;
         const chat = ai.chats.create({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-flash-lite-latest',
             config: {
-                systemInstruction: "You are the Fresh 'n' Fast ERP Personal Assistant. Answer questions accurately and concisely. Use tools to query system data when asked about menu, prices, or sales. For general questions like recipes, provide standard information but mention prices in KWD where appropriate. Respond in the same language as the user (English or Arabic).",
+                systemInstruction: `You are the ${companyName} ERP Personal Assistant. Answer questions accurately and concisely. Use tools to query system data when asked about menu, prices, or sales. For general questions like recipes, provide standard information but mention prices in ${currencyCode} where appropriate. Respond in the same language as the user (English or Arabic).`,
                 tools: [{ functionDeclarations: tools }],
             }
         });
@@ -91,18 +142,19 @@ export const chatWithAI = async (req, res) => {
         if (response.functionCalls && response.functionCalls.length > 0) {
             const toolResults = [];
             for (const call of response.functionCalls) {
-                const func = functions[call.name];
-                if (func) {
+                if (call.name && functions[call.name]) {
+                    const func = functions[call.name];
                     const result = await func(call.args);
                     toolResults.push({
-                        id: call.id, // we might not need id for @google/genai depending on version, let's use name
-                        name: call.name,
-                        response: { result },
+                        functionResponse: {
+                            name: call.name,
+                            response: { result },
+                        }
                     });
                 }
             }
             // Send tool responses back
-            response = await chat.sendMessage(toolResults);
+            response = await chat.sendMessage({ message: toolResults });
         }
         return res.json({ success: true, text: response.text });
     }

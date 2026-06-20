@@ -3,6 +3,7 @@ import pool from '../config/db';
 import { logAudit } from '../utils/audit';
 export const getInventoryItems = async (req, res) => {
     try {
+        const user = req.user;
         const { category_id, search } = req.query;
         let query = `
       SELECT i.*, c.name_en as category_name_en, c.name_ar as category_name_ar,
@@ -21,6 +22,14 @@ export const getInventoryItems = async (req, res) => {
             const searchParam = `%${search}%`;
             params.push(searchParam, searchParam, searchParam);
         }
+        if (user && user.brand_id) {
+            query += ' AND i.brand_id = ?';
+            params.push(user.brand_id);
+        }
+        else if (req.query.brand_id) {
+            query += ' AND i.brand_id = ?';
+            params.push(req.query.brand_id);
+        }
         query += ' ORDER BY i.sort_order ASC, i.name_en ASC';
         const [items] = await pool.execute(query, params);
         return successResponse(res, items);
@@ -33,9 +42,14 @@ export const createInventoryItem = async (req, res) => {
     const connection = await pool.getConnection();
     try {
         await connection.beginTransaction();
+        const user = req.user;
         const { name_en, name_ar, sku, category_id, current_stock, min_stock_level, unit_en, unit_ar, cost_price, sort_order, packages } = req.body;
-        const [result] = await connection.execute(`INSERT INTO inventory_items (name_en, name_ar, sku, category_id, current_stock, min_stock_level, unit_en, unit_ar, cost_price, sort_order) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [name_en, name_ar, sku, category_id, current_stock || 0, min_stock_level || 5.0, unit_en || 'kg', unit_ar || 'كجم', cost_price || 0, sort_order || 0]);
+        let brandId = req.body.brand_id || null;
+        if (user && user.brand_id) {
+            brandId = user.brand_id;
+        }
+        const [result] = await connection.execute(`INSERT INTO inventory_items (name_en, name_ar, sku, category_id, current_stock, min_stock_level, unit_en, unit_ar, cost_price, sort_order, brand_id) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [name_en, name_ar, sku, category_id, current_stock || 0, min_stock_level || 5.0, unit_en || 'kg', unit_ar || 'كجم', cost_price || 0, sort_order || 0, brandId]);
         const itemId = result.insertId;
         if (packages && Array.isArray(packages)) {
             for (const pkg of packages) {

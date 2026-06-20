@@ -2,9 +2,26 @@ import { Request, Response } from 'express';
 import pool from '../config/db.js';
 import { successResponse, errorResponse } from '../utils/response.js';
 
+const getReportScope = (req: Request) => {
+  const user = (req as any).user;
+  
+  const userBrandId = user?.brand_id || null;
+  const userBranchId = user?.branch_id || null;
+
+  const queryBrandId = req.query.brand_id ? Number(req.query.brand_id) : null;
+  const queryBranchId = req.query.branch_id ? Number(req.query.branch_id) : null;
+
+  // Strict Scoping: If user is scoped to a specific branch/brand, they CANNOT bypass it via query parameters.
+  return {
+    brandId: userBrandId ? userBrandId : queryBrandId,
+    branchId: userBranchId ? userBranchId : queryBranchId
+  };
+};
+
 export const getSalesReport = async (req: Request, res: Response) => {
   try {
-    const { startDate, endDate, vendor_id, branch_id, salesman_id } = req.query;
+    const { startDate, endDate, vendor_id, salesman_id } = req.query;
+    const { brandId, branchId } = getReportScope(req);
     let query = `
       SELECT s.*, 
       IFNULL(v.name_en, s.customer_name) as vendor_name, 
@@ -30,7 +47,7 @@ export const getSalesReport = async (req: Request, res: Response) => {
       ), 0) as total_cost
       FROM sales_orders s
       LEFT JOIN vendors v ON s.vendor_id = v.vendor_id
-      LEFT JOIN partner_branches pb ON s.branch_id = pb.branch_id
+      LEFT JOIN branches pb ON s.branch_id = pb.branch_id
       LEFT JOIN salesmen sm ON s.salesman_id = sm.salesman_id
       WHERE s.deleted_at IS NULL
     `;
@@ -44,9 +61,13 @@ export const getSalesReport = async (req: Request, res: Response) => {
       query += ` AND s.vendor_id = ?`;
       params.push(vendor_id);
     }
-    if (branch_id) {
+    if (branchId) {
       query += ` AND s.branch_id = ?`;
-      params.push(branch_id);
+      params.push(branchId);
+    }
+    if (brandId) {
+      query += ` AND s.brand_id = ?`;
+      params.push(brandId);
     }
     if (salesman_id) {
       query += ` AND s.salesman_id = ?`;
@@ -100,7 +121,8 @@ export const getProductionReport = async (req: Request, res: Response) => {
 
 export const getWastageReport = async (req: Request, res: Response) => {
   try {
-    const { startDate, endDate, vendor_id, branch_id, salesman_id } = req.query;
+    const { startDate, endDate, vendor_id, salesman_id } = req.query;
+    const { brandId, branchId } = getReportScope(req);
     let query = `
       SELECT w.*, 
              DATE_FORMAT(w.created_at, '%Y-%m-%d') as report_date,
@@ -119,6 +141,7 @@ export const getWastageReport = async (req: Request, res: Response) => {
       LEFT JOIN sales_returns r ON w.return_id = r.return_id
       LEFT JOIN vendors v ON COALESCE(w.vendor_id, r.vendor_id) = v.vendor_id
       LEFT JOIN partner_branches pb ON r.branch_id = pb.branch_id
+      LEFT JOIN admins a ON w.admin_id = a.id
       WHERE 1=1
     `;
     const params: any[] = [];
@@ -131,9 +154,13 @@ export const getWastageReport = async (req: Request, res: Response) => {
       query += ` AND COALESCE(w.vendor_id, r.vendor_id) = ?`;
       params.push(vendor_id);
     }
-    if (branch_id) {
-      query += ` AND r.branch_id = ?`;
-      params.push(branch_id);
+    if (branchId) {
+      query += ` AND (r.branch_id = ? OR w.branch_id = ? OR a.branch_id = ?)`;
+      params.push(branchId, branchId, branchId);
+    }
+    if (brandId) {
+      query += ` AND (mi.brand_id = ? OR ii.brand_id = ? OR a.brand_id = ?)`;
+      params.push(brandId, brandId, brandId);
     }
     if (salesman_id) {
       query += ` AND COALESCE(w.salesman_id, r.salesman_id) = ?`;
@@ -152,7 +179,8 @@ export const getWastageReport = async (req: Request, res: Response) => {
 
 export const getAnalyticsSummary = async (req: Request, res: Response) => {
   try {
-    const { startDate, endDate, vendor_id, branch_id, salesman_id } = req.query;
+    const { startDate, endDate, vendor_id, salesman_id } = req.query;
+    const { brandId, branchId } = getReportScope(req);
     const params: any[] = [];
     let dateFilter = "";
     if (startDate && endDate) {
@@ -162,11 +190,17 @@ export const getAnalyticsSummary = async (req: Request, res: Response) => {
     const vendorFilter = vendor_id ? " AND s.vendor_id = ?" : "";
     if (vendor_id) params.push(vendor_id);
 
-    const branchFilter = branch_id ? " AND s.branch_id = ?" : "";
-    if (branch_id) params.push(branch_id);
+    const branchFilter = branchId ? " AND s.branch_id = ?" : "";
+    if (branchId) params.push(branchId);
+
+    const brandFilter = brandId ? " AND s.brand_id = ?" : "";
+    if (brandId) params.push(brandId);
 
     const salesmanFilter = salesman_id ? " AND s.salesman_id = ?" : "";
     if (salesman_id) params.push(salesman_id);
+
+    // Helper for dailyQuery/customersQuery parameter matching
+    const queryParams = [...params];
 
     // 1. Daily Trend
     const dailyQuery = `
@@ -186,7 +220,7 @@ export const getAnalyticsSummary = async (req: Request, res: Response) => {
           WHERE sr.sale_id = s.sale_id
         ), 0)) as profit
       FROM sales_orders s
-      WHERE s.deleted_at IS NULL ${dateFilter} ${vendorFilter} ${branchFilter} ${salesmanFilter}
+      WHERE s.deleted_at IS NULL ${dateFilter} ${vendorFilter} ${branchFilter} ${brandFilter} ${salesmanFilter}
       GROUP BY date
       ORDER BY date ASC
     `;
@@ -198,7 +232,7 @@ export const getAnalyticsSummary = async (req: Request, res: Response) => {
         SUM(s.final_amount) as revenue
       FROM sales_orders s
       LEFT JOIN vendors v ON s.vendor_id = v.vendor_id
-      WHERE s.deleted_at IS NULL ${dateFilter} ${vendorFilter} ${branchFilter} ${salesmanFilter}
+      WHERE s.deleted_at IS NULL ${dateFilter} ${vendorFilter} ${branchFilter} ${brandFilter} ${salesmanFilter}
       GROUP BY name
       ORDER BY revenue DESC
       LIMIT 5
@@ -216,9 +250,13 @@ export const getAnalyticsSummary = async (req: Request, res: Response) => {
       wastageVendorFilter += " AND COALESCE(w.vendor_id, r.vendor_id) = ?";
       wastageParams.push(vendor_id);
     }
-    if (branch_id) {
-      wastageVendorFilter += " AND r.branch_id = ?";
-      wastageParams.push(branch_id);
+    if (branchId) {
+      wastageVendorFilter += " AND (r.branch_id = ? OR w.branch_id = ?)";
+      wastageParams.push(branchId, branchId);
+    }
+    if (brandId) {
+      wastageVendorFilter += " AND (w.brand_id = ? OR r.brand_id = ?)";
+      wastageParams.push(brandId, brandId);
     }
     if (salesman_id) {
       wastageVendorFilter += " AND COALESCE(w.salesman_id, r.salesman_id) = ?";
@@ -233,8 +271,8 @@ export const getAnalyticsSummary = async (req: Request, res: Response) => {
       GROUP BY w.reason_en
     `;
 
-    const [dailyTrend]: any = await pool.execute(dailyQuery, params);
-    const [topCustomers]: any = await pool.execute(customersQuery, params);
+    const [dailyTrend]: any = await pool.execute(dailyQuery, queryParams);
+    const [topCustomers]: any = await pool.execute(customersQuery, queryParams);
     const [wastageReasons]: any = await pool.execute(wastageQuery, wastageParams);
 
     return successResponse(res, {
@@ -250,7 +288,8 @@ export const getAnalyticsSummary = async (req: Request, res: Response) => {
 
 export const getPurchaseReport = async (req: Request, res: Response) => {
   try {
-    const { startDate, endDate, vendor_id, branch_id } = req.query;
+    const { startDate, endDate, vendor_id } = req.query;
+    const { brandId, branchId } = getReportScope(req);
     let query = `
       SELECT po.*, 
       v.name_en as vendor_name, 
@@ -273,9 +312,13 @@ export const getPurchaseReport = async (req: Request, res: Response) => {
       query += ` AND po.vendor_id = ?`;
       params.push(vendor_id);
     }
-    if (branch_id) {
+    if (branchId) {
       query += ` AND po.branch_id = ?`;
-      params.push(branch_id);
+      params.push(branchId);
+    }
+    if (brandId) {
+      query += ` AND po.brand_id = ?`;
+      params.push(brandId);
     }
 
     query += ` ORDER BY po.date DESC, po.purchase_id DESC`;
@@ -290,12 +333,14 @@ export const getPurchaseReport = async (req: Request, res: Response) => {
 
 export const getProductPerformanceReport = async (req: Request, res: Response) => {
   try {
-    const { startDate, endDate, vendor_id, branch_id, salesman_id } = req.query;
+    const { startDate, endDate, vendor_id, salesman_id } = req.query;
+    const { brandId, branchId } = getReportScope(req);
     
     // Build filter fragments for the subqueries and outer query
     const subDateFilter = (startDate && endDate) ? 'AND DATE(sr.created_at) BETWEEN ? AND ?' : '';
     const subVendorFilter = vendor_id ? 'AND sr.vendor_id = ?' : '';
-    const subBranchFilter = branch_id ? 'AND sr.branch_id = ?' : '';
+    const subBranchFilter = branchId ? 'AND sr.branch_id = ?' : '';
+    const subBrandFilter = brandId ? 'AND sr.brand_id = ?' : '';
     const subSalesmanFilter = salesman_id ? 'AND sr.salesman_id = ?' : '';
 
     // 🛡️ SALES-CENTRIC PERFORMANCE ORACLE
@@ -316,6 +361,7 @@ export const getProductPerformanceReport = async (req: Request, res: Response) =
            ${subDateFilter}
            ${subVendorFilter}
            ${subBranchFilter}
+           ${subBrandFilter}
            ${subSalesmanFilter}
           ), 0
         ) as returns_loss,
@@ -327,6 +373,7 @@ export const getProductPerformanceReport = async (req: Request, res: Response) =
            ${subDateFilter}
            ${subVendorFilter}
            ${subBranchFilter}
+           ${subBrandFilter}
            ${subSalesmanFilter}
           ), 0
         ) as returns_qty
@@ -341,13 +388,15 @@ export const getProductPerformanceReport = async (req: Request, res: Response) =
     // Push params for subquery 1 (returns_loss)
     if (startDate && endDate) params.push(startDate, endDate);
     if (vendor_id) params.push(vendor_id);
-    if (branch_id) params.push(branch_id);
+    if (branchId) params.push(branchId);
+    if (brandId) params.push(brandId);
     if (salesman_id) params.push(salesman_id);
 
     // Push params for subquery 2 (returns_qty)
     if (startDate && endDate) params.push(startDate, endDate);
     if (vendor_id) params.push(vendor_id);
-    if (branch_id) params.push(branch_id);
+    if (branchId) params.push(branchId);
+    if (brandId) params.push(brandId);
     if (salesman_id) params.push(salesman_id);
 
     // Outer query filters
@@ -356,7 +405,8 @@ export const getProductPerformanceReport = async (req: Request, res: Response) =
       params.push(startDate, endDate);
     }
     if (vendor_id) { query += ` AND s.vendor_id = ?`; params.push(vendor_id); }
-    if (branch_id) { query += ` AND s.branch_id = ?`; params.push(branch_id); }
+    if (branchId) { query += ` AND s.branch_id = ?`; params.push(branchId); }
+    if (brandId) { query += ` AND s.brand_id = ?`; params.push(brandId); }
     if (salesman_id) { query += ` AND s.salesman_id = ?`; params.push(salesman_id); }
 
     query += ` GROUP BY mi.menu_item_id ORDER BY total_sold DESC`;
@@ -382,44 +432,74 @@ export const getProductPerformanceReport = async (req: Request, res: Response) =
 export const getFoodCostReport = async (req: Request, res: Response) => {
   try {
     const { startDate, endDate } = req.query;
+    const { brandId, branchId } = getReportScope(req);
     const today = new Date().toISOString().split('T')[0];
     
     const start = startDate ? String(startDate) : new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
     const end = endDate ? String(endDate) : today;
 
-    // 1. Fetch active inventory items
-    const [items]: any = await pool.execute(`
+    // Build filters and parameters
+    let itemsQuery = `
       SELECT ii.inventory_item_id, ii.name_en, ii.name_ar, ii.sku, ii.current_stock, ii.min_stock_level, ii.unit_en, ii.unit_ar, ii.cost_price,
       c.name_en as category_name
       FROM inventory_items ii
       LEFT JOIN categories c ON ii.category_id = c.category_id
       WHERE ii.deleted_at IS NULL
-      ORDER BY c.name_en ASC, ii.name_en ASC
-    `);
+    `;
+    const itemsParams: any[] = [];
+    if (brandId) {
+      itemsQuery += ` AND ii.brand_id = ?`;
+      itemsParams.push(brandId);
+    }
+    itemsQuery += ` ORDER BY c.name_en ASC, ii.name_en ASC`;
+
+    // 1. Fetch active inventory items
+    const [items]: any = await pool.execute(itemsQuery, itemsParams);
 
     // 2. Fetch receiving quantities for all items in date range in bulk
-    const [receivingRows]: any = await pool.execute(`
+    let recQuery = `
       SELECT poi.inventory_item_id, SUM(poi.quantity) as total_qty
       FROM purchase_order_items poi
       JOIN purchase_orders po ON poi.purchase_id = po.purchase_id
       WHERE po.status = 'received'
         AND DATE(po.received_at) BETWEEN ? AND ?
-      GROUP BY poi.inventory_item_id
-    `, [start, end]);
+    `;
+    const recParams: any[] = [start, end];
+    if (branchId) {
+      recQuery += ` AND po.branch_id = ?`;
+      recParams.push(branchId);
+    }
+    if (brandId) {
+      recQuery += ` AND po.brand_id = ?`;
+      recParams.push(brandId);
+    }
+    recQuery += ` GROUP BY poi.inventory_item_id`;
+    const [receivingRows]: any = await pool.execute(recQuery, recParams);
     const receivingMap = new Map(receivingRows.map((r: any) => [r.inventory_item_id, parseFloat(r.total_qty || 0)]));
 
     // 3. Fetch wastage quantities in date range in bulk
-    const [wastageRows]: any = await pool.execute(`
+    let wasteQuery = `
       SELECT w.inventory_item_id, SUM(w.quantity) as total_qty
       FROM wastage w
+      LEFT JOIN admins a ON w.admin_id = a.id
       WHERE w.deleted_at IS NULL
         AND DATE(w.created_at) BETWEEN ? AND ?
-      GROUP BY w.inventory_item_id
-    `, [start, end]);
+    `;
+    const wasteParams: any[] = [start, end];
+    if (branchId) {
+      wasteQuery += ` AND (w.branch_id = ? OR a.branch_id = ?)`;
+      wasteParams.push(branchId, branchId);
+    }
+    if (brandId) {
+      wasteQuery += ` AND (w.brand_id = ? OR a.brand_id = ?)`;
+      wasteParams.push(brandId, brandId);
+    }
+    wasteQuery += ` GROUP BY w.inventory_item_id`;
+    const [wastageRows]: any = await pool.execute(wasteQuery, wasteParams);
     const wastageMap = new Map(wastageRows.map((r: any) => [r.inventory_item_id, parseFloat(r.total_qty || 0)]));
 
     // 4. Fetch production usage in date range in bulk
-    const [productionRows]: any = await pool.execute(`
+    let prodQuery = `
       SELECT mii.inventory_item_id, SUM(pi.quantity_produced * mii.quantity * IFNULL(iip.multiplier, 1)) as total_qty
       FROM production_items pi
       JOIN production_logs pl ON pi.production_id = pl.production_id
@@ -427,33 +507,64 @@ export const getFoodCostReport = async (req: Request, res: Response) => {
       LEFT JOIN inventory_item_packages iip ON mii.package_id = iip.package_id
       WHERE pl.deleted_at IS NULL
         AND DATE(pl.production_date) BETWEEN ? AND ?
-      GROUP BY mii.inventory_item_id
-    `, [start, end]);
+    `;
+    const prodParams: any[] = [start, end];
+    if (branchId) {
+      prodQuery += ` AND pl.branch_id = ?`;
+      prodParams.push(branchId);
+    }
+    if (brandId) {
+      prodQuery += ` AND pl.brand_id = ?`;
+      prodParams.push(brandId);
+    }
+    prodQuery += ` GROUP BY mii.inventory_item_id`;
+    const [productionRows]: any = await pool.execute(prodQuery, prodParams);
     const productionMap = new Map(productionRows.map((r: any) => [r.inventory_item_id, parseFloat(r.total_qty || 0)]));
 
     // 5. Fetch receiving since start in bulk (for opening stock back-calc)
-    const [recSinceStartRows]: any = await pool.execute(`
+    let recSinceStartQuery = `
       SELECT poi.inventory_item_id, SUM(poi.quantity) as total_qty
       FROM purchase_order_items poi
       JOIN purchase_orders po ON poi.purchase_id = po.purchase_id
       WHERE po.status = 'received'
         AND DATE(po.received_at) >= ?
-      GROUP BY poi.inventory_item_id
-    `, [start]);
+    `;
+    const recSinceStartParams: any[] = [start];
+    if (branchId) {
+      recSinceStartQuery += ` AND po.branch_id = ?`;
+      recSinceStartParams.push(branchId);
+    }
+    if (brandId) {
+      recSinceStartQuery += ` AND po.brand_id = ?`;
+      recSinceStartParams.push(brandId);
+    }
+    recSinceStartQuery += ` GROUP BY poi.inventory_item_id`;
+    const [recSinceStartRows]: any = await pool.execute(recSinceStartQuery, recSinceStartParams);
     const recSinceStartMap = new Map(recSinceStartRows.map((r: any) => [r.inventory_item_id, parseFloat(r.total_qty || 0)]));
 
     // 6. Fetch wastage since start in bulk (for opening stock back-calc)
-    const [wasteSinceStartRows]: any = await pool.execute(`
+    let wasteSinceStartQuery = `
       SELECT w.inventory_item_id, SUM(w.quantity) as total_qty
       FROM wastage w
+      LEFT JOIN admins a ON w.admin_id = a.id
       WHERE w.deleted_at IS NULL
         AND DATE(w.created_at) >= ?
-      GROUP BY w.inventory_item_id
-    `, [start]);
+    `;
+    const wasteSinceStartParams: any[] = [start];
+    if (branchId) {
+      wasteSinceStartQuery += ` AND (w.branch_id = ? OR a.branch_id = ?)`;
+      wasteSinceStartParams.push(branchId, branchId);
+    }
+    if (brandId) {
+      wasteSinceStartQuery += ` AND (w.brand_id = ? OR a.brand_id = ?)`;
+      wasteSinceStartParams.push(brandId, brandId);
+    }
+    wasteSinceStartQuery += ` GROUP BY w.inventory_item_id`;
+    const [wasteSinceStartRows]: any = await pool.execute(wasteSinceStartQuery, wasteSinceStartParams);
     const wasteSinceStartMap = new Map(wasteSinceStartRows.map((r: any) => [r.inventory_item_id, parseFloat(r.total_qty || 0)]));
 
     // 7. Fetch production usage since start in bulk (for opening stock back-calc)
-    const [prodSinceStartRows]: any = await pool.execute(`
+    let prodSinceStartQuery = `
       SELECT mii.inventory_item_id, SUM(pi.quantity_produced * mii.quantity * IFNULL(iip.multiplier, 1)) as total_qty
       FROM production_items pi
       JOIN production_logs pl ON pi.production_id = pl.production_id
@@ -461,33 +572,64 @@ export const getFoodCostReport = async (req: Request, res: Response) => {
       LEFT JOIN inventory_item_packages iip ON mii.package_id = iip.package_id
       WHERE pl.deleted_at IS NULL
         AND DATE(pl.production_date) >= ?
-      GROUP BY mii.inventory_item_id
-    `, [start]);
+    `;
+    const prodSinceStartParams: any[] = [start];
+    if (branchId) {
+      prodSinceStartQuery += ` AND pl.branch_id = ?`;
+      prodSinceStartParams.push(branchId);
+    }
+    if (brandId) {
+      prodSinceStartQuery += ` AND pl.brand_id = ?`;
+      prodSinceStartParams.push(brandId);
+    }
+    prodSinceStartQuery += ` GROUP BY mii.inventory_item_id`;
+    const [prodSinceStartRows]: any = await pool.execute(prodSinceStartQuery, prodSinceStartParams);
     const prodSinceStartMap = new Map(prodSinceStartRows.map((r: any) => [r.inventory_item_id, parseFloat(r.total_qty || 0)]));
 
     // 8. Fetch receiving AFTER end date (for closing stock back-calc)
-    const [recAfterEndRows]: any = await pool.execute(`
+    let recAfterEndQuery = `
       SELECT poi.inventory_item_id, SUM(poi.quantity) as total_qty
       FROM purchase_order_items poi
       JOIN purchase_orders po ON poi.purchase_id = po.purchase_id
       WHERE po.status = 'received'
         AND DATE(po.received_at) > ?
-      GROUP BY poi.inventory_item_id
-    `, [end]);
+    `;
+    const recAfterEndParams: any[] = [end];
+    if (branchId) {
+      recAfterEndQuery += ` AND po.branch_id = ?`;
+      recAfterEndParams.push(branchId);
+    }
+    if (brandId) {
+      recAfterEndQuery += ` AND po.brand_id = ?`;
+      recAfterEndParams.push(brandId);
+    }
+    recAfterEndQuery += ` GROUP BY poi.inventory_item_id`;
+    const [recAfterEndRows]: any = await pool.execute(recAfterEndQuery, recAfterEndParams);
     const recAfterEndMap = new Map(recAfterEndRows.map((r: any) => [r.inventory_item_id, parseFloat(r.total_qty || 0)]));
 
     // 9. Fetch wastage AFTER end date (for closing stock back-calc)
-    const [wasteAfterEndRows]: any = await pool.execute(`
+    let wasteAfterEndQuery = `
       SELECT w.inventory_item_id, SUM(w.quantity) as total_qty
       FROM wastage w
+      LEFT JOIN admins a ON w.admin_id = a.id
       WHERE w.deleted_at IS NULL
         AND DATE(w.created_at) > ?
-      GROUP BY w.inventory_item_id
-    `, [end]);
+    `;
+    const wasteAfterEndParams: any[] = [end];
+    if (branchId) {
+      wasteAfterEndQuery += ` AND (w.branch_id = ? OR a.branch_id = ?)`;
+      wasteAfterEndParams.push(branchId, branchId);
+    }
+    if (brandId) {
+      wasteAfterEndQuery += ` AND (w.brand_id = ? OR a.brand_id = ?)`;
+      wasteAfterEndParams.push(brandId, brandId);
+    }
+    wasteAfterEndQuery += ` GROUP BY w.inventory_item_id`;
+    const [wasteAfterEndRows]: any = await pool.execute(wasteAfterEndQuery, wasteAfterEndParams);
     const wasteAfterEndMap = new Map(wasteAfterEndRows.map((r: any) => [r.inventory_item_id, parseFloat(r.total_qty || 0)]));
 
     // 10. Fetch production usage AFTER end date (for closing stock back-calc)
-    const [prodAfterEndRows]: any = await pool.execute(`
+    let prodAfterEndQuery = `
       SELECT mii.inventory_item_id, SUM(pi.quantity_produced * mii.quantity * IFNULL(iip.multiplier, 1)) as total_qty
       FROM production_items pi
       JOIN production_logs pl ON pi.production_id = pl.production_id
@@ -495,8 +637,18 @@ export const getFoodCostReport = async (req: Request, res: Response) => {
       LEFT JOIN inventory_item_packages iip ON mii.package_id = iip.package_id
       WHERE pl.deleted_at IS NULL
         AND DATE(pl.production_date) > ?
-      GROUP BY mii.inventory_item_id
-    `, [end]);
+    `;
+    const prodAfterEndParams: any[] = [end];
+    if (branchId) {
+      prodAfterEndQuery += ` AND pl.branch_id = ?`;
+      prodAfterEndParams.push(branchId);
+    }
+    if (brandId) {
+      prodAfterEndQuery += ` AND pl.brand_id = ?`;
+      prodAfterEndParams.push(brandId);
+    }
+    prodAfterEndQuery += ` GROUP BY mii.inventory_item_id`;
+    const [prodAfterEndRows]: any = await pool.execute(prodAfterEndQuery, prodAfterEndParams);
     const prodAfterEndMap = new Map(prodAfterEndRows.map((r: any) => [r.inventory_item_id, parseFloat(r.total_qty || 0)]));
 
     // 11. Assemble report data
@@ -539,13 +691,22 @@ export const getFoodCostReport = async (req: Request, res: Response) => {
       };
     });
 
-
-    const [salesRows]: any = await pool.execute(`
+    let salesQuery = `
       SELECT SUM(final_amount) as revenue
       FROM sales_orders
       WHERE deleted_at IS NULL
         AND DATE(created_at) BETWEEN ? AND ?
-    `, [start, end]);
+    `;
+    const salesParams: any[] = [start, end];
+    if (branchId) {
+      salesQuery += ` AND branch_id = ?`;
+      salesParams.push(branchId);
+    }
+    if (brandId) {
+      salesQuery += ` AND brand_id = ?`;
+      salesParams.push(brandId);
+    }
+    const [salesRows]: any = await pool.execute(salesQuery, salesParams);
     const salesRevenue = parseFloat(salesRows[0]?.revenue || 0);
 
     return successResponse(res, {
@@ -560,7 +721,8 @@ export const getFoodCostReport = async (req: Request, res: Response) => {
 
 export const getClientStatements = async (req: Request, res: Response) => {
   try {
-    const { startDate, endDate, vendor_id, branch_id } = req.query;
+    const { startDate, endDate, vendor_id } = req.query;
+    const { brandId, branchId } = getReportScope(req);
     
     let query = `
       SELECT s.*, 
@@ -584,13 +746,13 @@ export const getClientStatements = async (req: Request, res: Response) => {
       query += ` AND s.vendor_id = ?`;
       params.push(vendor_id);
     }
-    if (branch_id) {
-      if (branch_id === 'main') {
-        query += ` AND (s.branch_id IS NULL OR s.branch_id = 'main' OR s.branch_id = 0)`;
-      } else {
-        query += ` AND s.branch_id = ?`;
-        params.push(branch_id);
-      }
+    if (branchId) {
+      query += ` AND s.branch_id = ?`;
+      params.push(branchId);
+    }
+    if (brandId) {
+      query += ` AND s.brand_id = ?`;
+      params.push(brandId);
     }
     
     query += ` ORDER BY s.created_at DESC, s.sale_id DESC`;
@@ -633,6 +795,7 @@ export const getClientStatements = async (req: Request, res: Response) => {
 export const getOperationalPNL = async (req: Request, res: Response) => {
   try {
     const { startDate, endDate } = req.query;
+    const { brandId, branchId } = getReportScope(req);
     
     // Default to current year if no dates provided
     let dateFilter = '';
@@ -653,9 +816,18 @@ export const getOperationalPNL = async (req: Request, res: Response) => {
       LEFT JOIN categories c ON mi.category_id = c.category_id
       JOIN sales_orders s ON soi.sale_id = s.sale_id
       WHERE s.deleted_at IS NULL ${dateFilter.replace('created_at', 's.created_at')}
-      GROUP BY c.name_en
     `;
-    const [salesRaw]: any = await pool.execute(salesQuery, params);
+    const salesParams = [...params];
+    if (branchId) {
+      salesQuery += ` AND s.branch_id = ?`;
+      salesParams.push(branchId);
+    }
+    if (brandId) {
+      salesQuery += ` AND s.brand_id = ?`;
+      salesParams.push(brandId);
+    }
+    salesQuery += ` GROUP BY c.name_en`;
+    const [salesRaw]: any = await pool.execute(salesQuery, salesParams);
 
     // 2. RETURNS BY CATEGORY (to deduct from sales)
     let returnsQuery = `
@@ -668,9 +840,18 @@ export const getOperationalPNL = async (req: Request, res: Response) => {
       LEFT JOIN categories c ON mi.category_id = c.category_id
       JOIN sales_returns sr ON sri.return_id = sr.return_id
       WHERE 1=1 ${dateFilter.replace('created_at', 'sr.created_at')}
-      GROUP BY c.name_en
     `;
-    const [returnsRaw]: any = await pool.execute(returnsQuery, params);
+    const returnsParams = [...params];
+    if (branchId) {
+      returnsQuery += ` AND sr.branch_id = ?`;
+      returnsParams.push(branchId);
+    }
+    if (brandId) {
+      returnsQuery += ` AND sr.brand_id = ?`;
+      returnsParams.push(brandId);
+    }
+    returnsQuery += ` GROUP BY c.name_en`;
+    const [returnsRaw]: any = await pool.execute(returnsQuery, returnsParams);
 
     // Merge Sales and Returns
     const salesMap = new Map();
@@ -704,9 +885,18 @@ export const getOperationalPNL = async (req: Request, res: Response) => {
       SELECT role as category, SUM(salary) as amount 
       FROM employees 
       WHERE deleted_at IS NULL AND status = 'active'
-      GROUP BY role
     `;
-    const [laborRaw]: any = await pool.execute(employeesQuery);
+    const employeesParams: any[] = [];
+    if (branchId) {
+      employeesQuery += ` AND branch_id = ?`;
+      employeesParams.push(branchId);
+    }
+    if (brandId) {
+      employeesQuery += ` AND brand_id = ?`;
+      employeesParams.push(brandId);
+    }
+    employeesQuery += ` GROUP BY role`;
+    const [laborRaw]: any = await pool.execute(employeesQuery, employeesParams);
     const laborExpenses = laborRaw.map((e: any) => ({ category: e.category, amount: Number(e.amount) }));
 
     // Pull Other Expenses from operational_expenses
@@ -714,14 +904,32 @@ export const getOperationalPNL = async (req: Request, res: Response) => {
       SELECT category, SUM(amount) as total
       FROM operational_expenses
       WHERE type = 'Other Expense' ${dateFilter.replace('created_at', 'expense_date')}
-      GROUP BY category
     `;
-    const [expensesRaw]: any = await pool.execute(expensesQuery, params);
+    const expensesParams: any[] = [...params];
+    if (branchId) {
+      expensesQuery += ` AND branch_id = ?`;
+      expensesParams.push(branchId);
+    }
+    if (brandId) {
+      expensesQuery += ` AND brand_id = ?`;
+      expensesParams.push(brandId);
+    }
+    expensesQuery += ` GROUP BY category`;
+    const [expensesRaw]: any = await pool.execute(expensesQuery, expensesParams);
     const otherExpenses = expensesRaw.map((e: any) => ({ category: e.category, amount: Number(e.total) }));
 
     // Calculate Asset Depreciation (Monthly)
-    let assetsQuery = `SELECT name, value, depreciation_rate FROM company_assets`;
-    const [assetsRaw]: any = await pool.execute(assetsQuery);
+    let assetsQuery = `SELECT name, value, depreciation_rate FROM company_assets WHERE 1=1`;
+    const assetsParams: any[] = [];
+    if (branchId) {
+      assetsQuery += ` AND branch_id = ?`;
+      assetsParams.push(branchId);
+    }
+    if (brandId) {
+      assetsQuery += ` AND brand_id = ?`;
+      assetsParams.push(brandId);
+    }
+    const [assetsRaw]: any = await pool.execute(assetsQuery, assetsParams);
     
     let totalMonthlyDepreciation = 0;
     assetsRaw.forEach((asset: any) => {
@@ -742,8 +950,17 @@ export const getOperationalPNL = async (req: Request, res: Response) => {
     }
 
     // Calculate Liability Interest (Monthly)
-    let liabilitiesQuery = `SELECT name, amount, interest_rate FROM company_liabilities`;
-    const [liabilitiesRaw]: any = await pool.execute(liabilitiesQuery);
+    let liabilitiesQuery = `SELECT name, amount, interest_rate FROM company_liabilities WHERE 1=1`;
+    const liabilitiesParams: any[] = [];
+    if (branchId) {
+      liabilitiesQuery += ` AND branch_id = ?`;
+      liabilitiesParams.push(branchId);
+    }
+    if (brandId) {
+      liabilitiesQuery += ` AND brand_id = ?`;
+      liabilitiesParams.push(brandId);
+    }
+    const [liabilitiesRaw]: any = await pool.execute(liabilitiesQuery, liabilitiesParams);
 
     let totalMonthlyInterest = 0;
     liabilitiesRaw.forEach((liability: any) => {

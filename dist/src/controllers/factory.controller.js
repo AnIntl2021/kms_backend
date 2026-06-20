@@ -73,23 +73,38 @@ export const createSalesOrder = async (req, res) => {
 };
 export const getDispatches = async (req, res) => {
     try {
+        const admin = req.user;
+        let branchFilter = '';
+        const queryParams = [];
+        if (admin && admin.branch_id) {
+            branchFilter = 'AND s.branch_id = ?';
+            queryParams.push(admin.branch_id);
+        }
         const [dispatches] = await pool.execute(`
       SELECT 
-        s.sale_id, s.order_number, s.vendor_id, s.branch_id, s.customer_name, s.total_amount, 
-        s.discount_amount, s.final_amount, s.dispatch_status, s.batch_number, s.expiry_date, 
+        s.sales_order_id as sale_id, 
+        s.order_number, 
+        NULL as vendor_id, 
+        s.branch_id, 
+        s.customer_name, 
+        s.total_amount, 
+        0 as discount_amount, 
+        s.total_amount as final_amount, 
+        s.status as dispatch_status, 
+        NULL as batch_number, 
+        NULL as expiry_date, 
         DATE_FORMAT(s.created_at, '%Y-%m-%d') as dispatch_date,
         s.created_at,
-        v.name_en as client_name,
-        pb.name_en as branch_name,
-        sm.name_en as salesman_name,
-        sm.phone as salesman_phone
+        s.customer_name as client_name,
+        b.name_en as branch_name,
+        NULL as salesman_name,
+        NULL as salesman_phone,
+        s.order_type
       FROM sales_orders s
-      LEFT JOIN vendors v ON s.vendor_id = v.vendor_id
-      LEFT JOIN partner_branches pb ON s.branch_id = pb.branch_id
-      LEFT JOIN salesmen sm ON s.salesman_id = sm.salesman_id
-      WHERE s.vendor_id IS NOT NULL AND s.deleted_at IS NULL
-      ORDER BY s.created_at DESC, s.sale_id DESC
-    `);
+      LEFT JOIN branches b ON s.branch_id = b.branch_id
+      WHERE s.order_type IN ('delivery', 'b2b') AND s.deleted_at IS NULL ${branchFilter}
+      ORDER BY s.created_at DESC, s.sales_order_id DESC
+    `, queryParams);
         return successResponse(res, dispatches);
     }
     catch (error) {
