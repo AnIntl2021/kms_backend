@@ -1,9 +1,6 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
-import { fileURLToPath } from 'url';
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 import helmet from 'helmet';
 import morgan from 'morgan';
 import { config } from './config/config';
@@ -236,7 +233,7 @@ app.get('/health', (req, res) => {
 });
 
 // Routes
-app.get('/api/debug-db', async (req, res) => { const [rows] = await pool.query('SELECT DATABASE() as db'); res.json(rows[0]); });
+app.get('/api/debug-db', async (req, res) => { const [rows] = await pool.query('SELECT DATABASE() as db'); res.json((rows as any)[0]); });
 app.use('/api', routes);
 
 // 404 Handler
