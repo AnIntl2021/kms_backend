@@ -181,7 +181,7 @@ CREATE TABLE IF NOT EXISTS menu_items (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deleted_at TIMESTAMP NULL,
   FOREIGN KEY (category_id) REFERENCES categories(category_id),
-  FOREIGN KEY (brand_id) REFERENCES brands(brand_id),
+  FOREIGN KEY (brand_id) REFERENCES brands(brand_id)
 ) ENGINE=InnoDB;
 
 -- 12.5 Branch-Specific Menu Items (Pricing Overrides & Availability)
