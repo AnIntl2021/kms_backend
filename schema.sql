@@ -158,6 +158,21 @@ CREATE TABLE IF NOT EXISTS inventory_item_packages (
   INDEX idx_pkg_item (inventory_item_id)
 ) ENGINE=InnoDB;
 
+-- 5.6 Inventory Batches (For FIFO Cost Tracking)
+CREATE TABLE IF NOT EXISTS inventory_batches (
+  batch_id INT AUTO_INCREMENT PRIMARY KEY,
+  inventory_item_id INT NOT NULL,
+  purchase_id INT DEFAULT NULL,
+  original_quantity DECIMAL(15, 3) NOT NULL,
+  remaining_quantity DECIMAL(15, 3) NOT NULL,
+  cost_per_unit DECIMAL(15, 3) NOT NULL,
+  status ENUM('active', 'exhausted') DEFAULT 'active',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (inventory_item_id) REFERENCES inventory_items(inventory_item_id) ON DELETE CASCADE,
+  INDEX idx_fifo_lookup (inventory_item_id, status, created_at)
+) ENGINE=InnoDB;
+
 -- 12. Menu Items (Selling Products)
 CREATE TABLE IF NOT EXISTS menu_items (
   menu_item_id INT AUTO_INCREMENT PRIMARY KEY,

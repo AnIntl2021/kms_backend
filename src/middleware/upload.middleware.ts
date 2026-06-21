@@ -11,7 +11,7 @@ const createDir = (dirPath: string) => {
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, '../../uploads/menu');
+    const uploadDir = path.join(process.cwd(), 'uploads/menu');
     createDir(uploadDir);
     cb(null, uploadDir);
   },
