@@ -36,6 +36,12 @@ export const authorize = (allowedRolesOrPermissions: string[]) => {
       return errorResponse(res, 'Access denied: not authenticated', 403);
     }
     
+    console.log('🔒 AUTH DEBUGLOG:', {
+      userRole: req.user.role,
+      userPermissions: req.user.permissions,
+      required: allowedRolesOrPermissions
+    });
+    
     // Check if the user's role is in the allowed list (backward compatibility)
     const hasRole = allowedRolesOrPermissions.includes(req.user.role);
     
@@ -43,7 +49,7 @@ export const authorize = (allowedRolesOrPermissions: string[]) => {
     const userPermissions = req.user.permissions || [];
     const hasPermission = allowedRolesOrPermissions.some(perm => userPermissions.includes(perm));
     
-    if (!hasRole && !hasPermission && req.user.role !== 'super_admin') {
+    if (!hasRole && !hasPermission && req.user.role !== 'super_admin' && req.user.role !== 'tenant_admin') {
       return errorResponse(res, 'Access denied: insufficient permissions', 403);
     }
     

@@ -87,11 +87,28 @@ CREATE TABLE IF NOT EXISTS vendors (
   phone VARCHAR(20),
   email VARCHAR(100),
   address TEXT,
+  type VARCHAR(50) DEFAULT 'supplier',
   status ENUM('active', 'inactive') DEFAULT 'active',
+  default_discount DECIMAL(5,2) DEFAULT 0.00,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deleted_at TIMESTAMP NULL,
   INDEX idx_vendor_name (name_en)
+) ENGINE=InnoDB;
+
+-- 4.2 Partner Branches (Location Specific Routing)
+CREATE TABLE IF NOT EXISTS partner_branches (
+  branch_id INT AUTO_INCREMENT PRIMARY KEY,
+  partner_id INT NOT NULL,
+  name_en VARCHAR(255) NOT NULL,
+  name_ar VARCHAR(255) DEFAULT NULL,
+  address TEXT DEFAULT NULL,
+  contact_person VARCHAR(255) DEFAULT NULL,
+  phone VARCHAR(50) DEFAULT NULL,
+  status ENUM('active', 'inactive') DEFAULT 'active',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (partner_id) REFERENCES vendors(vendor_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- 4. Products Table
@@ -332,6 +349,7 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
   admin_id INT,
   branch_id INT,
   po_number VARCHAR(50) NOT NULL UNIQUE,
+  date DATE DEFAULT NULL,
   invoice_type ENUM('tax_invoice', 'simplified_invoice', 'proforma', 'debit_note') DEFAULT 'tax_invoice',
   total_amount DECIMAL(10,3) DEFAULT 0.000,
   tax_amount DECIMAL(10,3) DEFAULT 0.000,

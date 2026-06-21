@@ -125,6 +125,7 @@ export const createPurchaseOrder = async (req: Request, res: Response) => {
     return successResponse(res, { purchase_id }, 'Purchase order created successfully', 201);
   } catch (error) {
     await connection.rollback();
+    console.error('Create PO Error:', error);
     return errorResponse(res, 'Failed to create PO segregation', 500, error);
   } finally {
     connection.release();
