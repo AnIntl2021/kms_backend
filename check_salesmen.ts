@@ -9,7 +9,7 @@ const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
   user: process.env.DB_USER || 'root',
   password: process.env.DB_PASSWORD || process.env.DB_PASS || '',
-  database: 'kms_chittidosa_22f4',
+  database: 'kms_ansoftt_09f7',
 };
 
 async function testQueries() {
