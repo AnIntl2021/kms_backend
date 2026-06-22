@@ -1,6 +1,12 @@
-import { successResponse, errorResponse } from '../utils/response';
-import pool from '../config/db';
-export const getTransfers = async (req, res) => {
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.updateTransferStatus = exports.createTransfer = exports.getTransfers = void 0;
+const response_1 = require("../utils/response");
+const db_1 = __importDefault(require("../config/db"));
+const getTransfers = async (req, res) => {
     try {
         const user = req.user;
         let query = `
@@ -25,11 +31,11 @@ export const getTransfers = async (req, res) => {
             params.push(user.branch_id, user.branch_id);
         }
         query += ' ORDER BY t.created_at DESC';
-        const [rows] = await pool.execute(query, params);
+        const [rows] = await db_1.default.execute(query, params);
         // Fetch items for each transfer
         if (rows.length > 0) {
             const transferIds = rows.map((r) => r.transfer_id);
-            const [items] = await pool.execute(`
+            const [items] = await db_1.default.execute(`
         SELECT ti.*, ii.name_en, ii.name_ar, ii.unit_en
         FROM stock_transfer_items ti
         JOIN inventory_items ii ON ti.inventory_item_id = ii.inventory_item_id
@@ -39,25 +45,26 @@ export const getTransfers = async (req, res) => {
                 row.items = items.filter((i) => i.transfer_id === row.transfer_id);
             });
         }
-        return successResponse(res, rows);
+        return (0, response_1.successResponse)(res, rows);
     }
     catch (error) {
         console.error('getTransfers Error:', error);
-        return errorResponse(res, 'Failed to fetch transfers', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to fetch transfers', 500, error);
     }
 };
-export const createTransfer = async (req, res) => {
-    const connection = await pool.getConnection();
+exports.getTransfers = getTransfers;
+const createTransfer = async (req, res) => {
+    const connection = await db_1.default.getConnection();
     try {
         await connection.beginTransaction();
         const user = req.user;
         const { from_branch_id, to_branch_id, notes, items } = req.body;
         const admin_id = user?.admin_id || 1;
         if (!to_branch_id) {
-            return errorResponse(res, 'Destination branch is required', 400);
+            return (0, response_1.errorResponse)(res, 'Destination branch is required', 400);
         }
         if (!items || !Array.isArray(items) || items.length === 0) {
-            return errorResponse(res, 'Transfer items are required', 400);
+            return (0, response_1.errorResponse)(res, 'Transfer items are required', 400);
         }
         // 1. Create Stock Transfer Log
         const [result] = await connection.execute('INSERT INTO stock_transfers (from_branch_id, to_branch_id, notes, created_by, status) VALUES (?, ?, ?, ?, ?)', [from_branch_id || null, to_branch_id, notes || null, admin_id, 'pending']);
@@ -67,34 +74,35 @@ export const createTransfer = async (req, res) => {
             await connection.execute('INSERT INTO stock_transfer_items (transfer_id, inventory_item_id, quantity) VALUES (?, ?, ?)', [transfer_id, item.inventory_item_id, item.quantity]);
         }
         await connection.commit();
-        return successResponse(res, { transfer_id }, 'Stock transfer requested successfully', 201);
+        return (0, response_1.successResponse)(res, { transfer_id }, 'Stock transfer requested successfully', 201);
     }
     catch (error) {
         await connection.rollback();
         console.error('createTransfer Error:', error);
-        return errorResponse(res, 'Failed to request stock transfer', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to request stock transfer', 500, error);
     }
     finally {
         connection.release();
     }
 };
-export const updateTransferStatus = async (req, res) => {
-    const connection = await pool.getConnection();
+exports.createTransfer = createTransfer;
+const updateTransferStatus = async (req, res) => {
+    const connection = await db_1.default.getConnection();
     try {
         await connection.beginTransaction();
         const { id } = req.params;
         const { status } = req.body; // 'completed' or 'cancelled'
         if (!['completed', 'cancelled'].includes(status)) {
-            return errorResponse(res, 'Invalid status update', 400);
+            return (0, response_1.errorResponse)(res, 'Invalid status update', 400);
         }
         // 1. Fetch Transfer details
         const [transfers] = await connection.execute('SELECT * FROM stock_transfers WHERE transfer_id = ?', [id]);
         if (transfers.length === 0) {
-            return errorResponse(res, 'Transfer request not found', 404);
+            return (0, response_1.errorResponse)(res, 'Transfer request not found', 404);
         }
         const transfer = transfers[0];
         if (transfer.status !== 'pending') {
-            return errorResponse(res, 'Transfer is already processed', 400);
+            return (0, response_1.errorResponse)(res, 'Transfer is already processed', 400);
         }
         // 2. If completed, perform stock movements
         if (status === 'completed') {
@@ -107,7 +115,7 @@ export const updateTransferStatus = async (req, res) => {
                 if (currentQty < Number(item.quantity) && transfer.from_branch_id !== null) {
                     // If transferring from a specific branch (not main office), block if insufficient stock
                     await connection.rollback();
-                    return errorResponse(res, `Insufficient stock for item ID ${item.inventory_item_id} in source branch. Available: ${currentQty}`, 400);
+                    return (0, response_1.errorResponse)(res, `Insufficient stock for item ID ${item.inventory_item_id} in source branch. Available: ${currentQty}`, 400);
                 }
                 // Deduct from source branch stock
                 await connection.execute('INSERT INTO branch_stock (branch_id, inventory_item_id, quantity) VALUES (?, ?, 0) ON DUPLICATE KEY UPDATE quantity = quantity', [sourceBranchId, item.inventory_item_id]);
@@ -119,14 +127,15 @@ export const updateTransferStatus = async (req, res) => {
         // 3. Update status
         await connection.execute('UPDATE stock_transfers SET status = ? WHERE transfer_id = ?', [status, id]);
         await connection.commit();
-        return successResponse(res, null, `Stock transfer marked as ${status} successfully`);
+        return (0, response_1.successResponse)(res, null, `Stock transfer marked as ${status} successfully`);
     }
     catch (error) {
         await connection.rollback();
         console.error('updateTransferStatus Error:', error);
-        return errorResponse(res, 'Failed to update stock transfer status', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to update stock transfer status', 500, error);
     }
     finally {
         connection.release();
     }
 };
+exports.updateTransferStatus = updateTransferStatus;

@@ -1,11 +1,17 @@
-import dotenv from 'dotenv';
-import path from 'path';
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.config = void 0;
+const dotenv_1 = __importDefault(require("dotenv"));
+const path_1 = __importDefault(require("path"));
 const env = process.env.NODE_ENV || 'development';
 const envFile = `.env.${env}`;
-dotenv.config({ path: path.resolve(process.cwd(), envFile) });
+dotenv_1.default.config({ path: path_1.default.resolve(process.cwd(), envFile) });
 // Fallback to default .env if specific stage file not found or for shared variables
-dotenv.config();
-export const config = {
+dotenv_1.default.config();
+exports.config = {
     env,
     port: parseInt(process.env.PORT || '5000', 10),
     db: {

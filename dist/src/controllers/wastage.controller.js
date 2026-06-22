@@ -1,8 +1,14 @@
-import pool from '../config/db';
-import { successResponse, errorResponse } from '../utils/response';
-export const getWastageLogs = async (req, res) => {
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.recordWastage = exports.getWastageLogs = void 0;
+const db_1 = __importDefault(require("../config/db"));
+const response_1 = require("../utils/response");
+const getWastageLogs = async (req, res) => {
     try {
-        const [rows] = await pool.execute(`
+        const [rows] = await db_1.default.execute(`
       SELECT w.*, 
              p.name_en as product_name_en, p.name_ar as product_name_ar,
              ii.name_en as item_name_en, ii.name_ar as item_name_ar,
@@ -16,16 +22,17 @@ export const getWastageLogs = async (req, res) => {
       JOIN admins a ON w.admin_id = a.admin_id
       ORDER BY w.created_at DESC
     `);
-        return successResponse(res, rows);
+        return (0, response_1.successResponse)(res, rows);
     }
     catch (error) {
-        return errorResponse(res, 'Error fetching wastage logs', 500, error);
+        return (0, response_1.errorResponse)(res, 'Error fetching wastage logs', 500, error);
     }
 };
-export const recordWastage = async (req, res) => {
+exports.getWastageLogs = getWastageLogs;
+const recordWastage = async (req, res) => {
     const { product_id, menu_item_id, inventory_item_id, quantity, reason_en, reason_ar } = req.body;
     const admin_id = req.user.admin_id;
-    const connection = await pool.getConnection();
+    const connection = await db_1.default.getConnection();
     try {
         await connection.beginTransaction();
         // 1. Record wastage
@@ -43,13 +50,14 @@ export const recordWastage = async (req, res) => {
             await connection.execute('UPDATE menu_items SET current_stock = current_stock - ? WHERE menu_item_id = ?', [quantity, menu_item_id]);
         }
         await connection.commit();
-        return successResponse(res, { id: result.insertId }, 'Wastage recorded successfully', 201);
+        return (0, response_1.successResponse)(res, { id: result.insertId }, 'Wastage recorded successfully', 201);
     }
     catch (error) {
         await connection.rollback();
-        return errorResponse(res, 'Error recording wastage', 500, error);
+        return (0, response_1.errorResponse)(res, 'Error recording wastage', 500, error);
     }
     finally {
         connection.release();
     }
 };
+exports.recordWastage = recordWastage;

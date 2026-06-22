@@ -1,7 +1,13 @@
-import pool from '../config/db';
-import { successResponse, errorResponse } from '../utils/response';
-export const produceSandwiches = async (req, res) => {
-    const connection = await pool.getConnection();
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.deleteSalesOrder = exports.getReturnItems = exports.getOrderItems = exports.getReturns = exports.updateReturn = exports.updateSalesOrder = exports.processReturn = exports.getDispatches = exports.createSalesOrder = exports.produceSandwiches = void 0;
+const db_1 = __importDefault(require("../config/db"));
+const response_1 = require("../utils/response");
+const produceSandwiches = async (req, res) => {
+    const connection = await db_1.default.getConnection();
     try {
         await connection.beginTransaction();
         const { menu_item_id, quantity } = req.body;
@@ -22,18 +28,19 @@ export const produceSandwiches = async (req, res) => {
         await connection.execute('UPDATE menu_items SET current_stock = current_stock + ? WHERE menu_item_id = ?', [quantity, menu_item_id]);
         await connection.execute('INSERT INTO production_logs (menu_item_id, quantity_produced, admin_id) VALUES (?, ?, ?)', [menu_item_id, quantity, admin_id]);
         await connection.commit();
-        return successResponse(res, null, 'Production completed and stock updated.');
+        return (0, response_1.successResponse)(res, null, 'Production completed and stock updated.');
     }
     catch (error) {
         await connection.rollback();
-        return errorResponse(res, error.message || 'Production failed');
+        return (0, response_1.errorResponse)(res, error.message || 'Production failed');
     }
     finally {
         connection.release();
     }
 };
-export const createSalesOrder = async (req, res) => {
-    const connection = await pool.getConnection();
+exports.produceSandwiches = produceSandwiches;
+const createSalesOrder = async (req, res) => {
+    const connection = await db_1.default.getConnection();
     try {
         await connection.beginTransaction();
         const { vendor_id, branch_id, customer_name, items, payment_method, order_number, batch_number, expiry_date, discount_percentage, dispatch_date, salesman_id } = req.body;
@@ -61,17 +68,18 @@ export const createSalesOrder = async (req, res) => {
             await connection.execute('UPDATE menu_items SET current_stock = current_stock - ? WHERE menu_item_id = ?', [item.quantity, item.menu_item_id]);
         }
         await connection.commit();
-        return successResponse(res, { sale_id }, 'Sale & Branch Dispatch completed.');
+        return (0, response_1.successResponse)(res, { sale_id }, 'Sale & Branch Dispatch completed.');
     }
     catch (error) {
         await connection.rollback();
-        return errorResponse(res, error.message || 'Sales transaction failed');
+        return (0, response_1.errorResponse)(res, error.message || 'Sales transaction failed');
     }
     finally {
         connection.release();
     }
 };
-export const getDispatches = async (req, res) => {
+exports.createSalesOrder = createSalesOrder;
+const getDispatches = async (req, res) => {
     try {
         const admin = req.user;
         let branchFilter = '';
@@ -80,7 +88,7 @@ export const getDispatches = async (req, res) => {
             branchFilter = 'AND s.branch_id = ?';
             queryParams.push(admin.branch_id);
         }
-        const [dispatches] = await pool.execute(`
+        const [dispatches] = await db_1.default.execute(`
       SELECT 
         s.sales_order_id as sale_id, 
         s.order_number, 
@@ -105,14 +113,15 @@ export const getDispatches = async (req, res) => {
       WHERE s.order_type IN ('delivery', 'b2b') AND s.deleted_at IS NULL ${branchFilter}
       ORDER BY s.created_at DESC, s.sales_order_id DESC
     `, queryParams);
-        return successResponse(res, dispatches);
+        return (0, response_1.successResponse)(res, dispatches);
     }
     catch (error) {
-        return errorResponse(res, 'Failed to fetch dispatches', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to fetch dispatches', 500, error);
     }
 };
-export const processReturn = async (req, res) => {
-    const connection = await pool.getConnection();
+exports.getDispatches = getDispatches;
+const processReturn = async (req, res) => {
+    const connection = await db_1.default.getConnection();
     try {
         await connection.beginTransaction();
         const { sale_id, vendor_id, branch_id, items, reason, salesman_id, return_date } = req.body;
@@ -166,20 +175,21 @@ export const processReturn = async (req, res) => {
             await connection.execute('INSERT INTO wastage (menu_item_id, return_id, quantity, reason_en, admin_id, created_at) VALUES (?, ?, ?, ?, ?, ?)', [item.menu_item_id || item.product_id, return_id, item.quantity, `Returned from Vendor: ${reason || 'Expired'}`, admin_id, sanitizedReturnDate]);
         }
         await connection.commit();
-        return successResponse(res, { return_id }, 'Return processed and items wasted.');
+        return (0, response_1.successResponse)(res, { return_id }, 'Return processed and items wasted.');
     }
     catch (error) {
         await connection.rollback();
-        return errorResponse(res, error.message || 'Failed to process return');
+        return (0, response_1.errorResponse)(res, error.message || 'Failed to process return');
     }
     finally {
         connection.release();
     }
 };
-export const updateSalesOrder = async (req, res) => {
+exports.processReturn = processReturn;
+const updateSalesOrder = async (req, res) => {
     const { sale_id } = req.params;
     const { vendor_id, branch_id, customer_name, items, batch_number, expiry_date, discount_percentage, dispatch_status, dispatch_date, salesman_id } = req.body;
-    const connection = await pool.getConnection();
+    const connection = await db_1.default.getConnection();
     try {
         await connection.beginTransaction();
         // 1. Check if order exists and is not locked
@@ -237,20 +247,21 @@ export const updateSalesOrder = async (req, res) => {
             await connection.execute('UPDATE menu_items SET current_stock = current_stock - ? WHERE menu_item_id = ?', [item.quantity, item.menu_item_id]);
         }
         await connection.commit();
-        return successResponse(res, null, 'Order fully updated and stock reconciled.');
+        return (0, response_1.successResponse)(res, null, 'Order fully updated and stock reconciled.');
     }
     catch (error) {
         await connection.rollback();
-        return errorResponse(res, error.message || 'Failed to update order', 500, error);
+        return (0, response_1.errorResponse)(res, error.message || 'Failed to update order', 500, error);
     }
     finally {
         connection.release();
     }
 };
-export const updateReturn = async (req, res) => {
+exports.updateSalesOrder = updateSalesOrder;
+const updateReturn = async (req, res) => {
     const { return_id } = req.params;
     const { items, reason, salesman_id, return_date } = req.body;
-    const connection = await pool.getConnection();
+    const connection = await db_1.default.getConnection();
     try {
         await connection.beginTransaction();
         // 1. Wipe old items and wastage entries
@@ -294,19 +305,20 @@ export const updateReturn = async (req, res) => {
             await connection.execute('INSERT INTO wastage (menu_item_id, return_id, quantity, reason_en, admin_id, created_at) VALUES (?, ?, ?, ?, ?, ?)', [item.menu_item_id || item.product_id, return_id, item.quantity, `Returned (Updated): ${reason || 'Expired'}`, admin_id, finalDate]);
         }
         await connection.commit();
-        return successResponse(res, null, 'Return record updated successfully.');
+        return (0, response_1.successResponse)(res, null, 'Return record updated successfully.');
     }
     catch (error) {
         await connection.rollback();
-        return errorResponse(res, error.message || 'Failed to update return', 500, error);
+        return (0, response_1.errorResponse)(res, error.message || 'Failed to update return', 500, error);
     }
     finally {
         connection.release();
     }
 };
-export const getReturns = async (req, res) => {
+exports.updateReturn = updateReturn;
+const getReturns = async (req, res) => {
     try {
-        const [returns] = await pool.execute(`
+        const [returns] = await db_1.default.execute(`
       SELECT 
         r.return_id, r.sale_id, r.total_credit_amount, r.reason, r.created_at,
         v.name_en as client_name,
@@ -323,17 +335,18 @@ export const getReturns = async (req, res) => {
       WHERE r.deleted_at IS NULL
       ORDER BY r.created_at DESC
     `);
-        return successResponse(res, returns);
+        return (0, response_1.successResponse)(res, returns);
     }
     catch (error) {
         console.error('getReturns Error:', error);
-        return errorResponse(res, 'Failed to fetch returns history', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to fetch returns history', 500, error);
     }
 };
-export const getOrderItems = async (req, res) => {
+exports.getReturns = getReturns;
+const getOrderItems = async (req, res) => {
     const { sale_id } = req.params;
     try {
-        const [items] = await pool.execute(`
+        const [items] = await db_1.default.execute(`
       SELECT 
         si.menu_item_id, 
         (si.quantity - IFNULL((
@@ -349,16 +362,17 @@ export const getOrderItems = async (req, res) => {
       WHERE si.sale_id = ?
       HAVING quantity > 0
     `, [sale_id]);
-        return successResponse(res, items);
+        return (0, response_1.successResponse)(res, items);
     }
     catch (error) {
-        return errorResponse(res, 'Failed to fetch order items', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to fetch order items', 500, error);
     }
 };
-export const getReturnItems = async (req, res) => {
+exports.getOrderItems = getOrderItems;
+const getReturnItems = async (req, res) => {
     const { return_id } = req.params;
     try {
-        const [items] = await pool.execute(`
+        const [items] = await db_1.default.execute(`
       SELECT 
         ri.menu_item_id, ri.quantity, 
         (ri.unit_price * (100 - IFNULL(so.discount_percentage, 25)) / 100) as unit_price,
@@ -370,14 +384,15 @@ export const getReturnItems = async (req, res) => {
       LEFT JOIN sales_orders so ON sr.sale_id = so.sale_id
       WHERE ri.return_id = ?
     `, [return_id]);
-        return successResponse(res, items);
+        return (0, response_1.successResponse)(res, items);
     }
     catch (error) {
-        return errorResponse(res, 'Failed to fetch return items', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to fetch return items', 500, error);
     }
 };
-export const deleteSalesOrder = async (req, res) => {
-    const connection = await pool.getConnection();
+exports.getReturnItems = getReturnItems;
+const deleteSalesOrder = async (req, res) => {
+    const connection = await db_1.default.getConnection();
     try {
         await connection.beginTransaction();
         const { id } = req.params;
@@ -406,15 +421,16 @@ export const deleteSalesOrder = async (req, res) => {
         // 3. Mark as deleted
         await connection.execute('UPDATE sales_orders SET deleted_at = CURRENT_TIMESTAMP WHERE sale_id = ?', [id]);
         await connection.commit();
-        return successResponse(res, null, 'Order deleted and stock reverted successfully');
+        return (0, response_1.successResponse)(res, null, 'Order deleted and stock reverted successfully');
     }
     catch (error) {
         if (connection)
             await connection.rollback();
-        return errorResponse(res, 'Failed to delete order and revert stock: ' + error.message, 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to delete order and revert stock: ' + error.message, 500, error);
     }
     finally {
         if (connection)
             connection.release();
     }
 };
+exports.deleteSalesOrder = deleteSalesOrder;

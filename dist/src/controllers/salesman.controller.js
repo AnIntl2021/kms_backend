@@ -1,16 +1,23 @@
-import pool from '../config/db';
-export const getSalesmen = async (req, res) => {
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.getSalesmanPerformance = exports.deleteSalesman = exports.updateSalesman = exports.createSalesman = exports.getSalesmanById = exports.getSalesmen = void 0;
+const db_1 = __importDefault(require("../config/db"));
+const getSalesmen = async (req, res) => {
     try {
-        const [rows] = await pool.execute('SELECT * FROM salesmen WHERE deleted_at IS NULL ORDER BY name_en ASC');
+        const [rows] = await db_1.default.execute('SELECT * FROM salesmen WHERE deleted_at IS NULL ORDER BY name_en ASC');
         res.json({ success: true, data: rows });
     }
     catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 };
-export const getSalesmanById = async (req, res) => {
+exports.getSalesmen = getSalesmen;
+const getSalesmanById = async (req, res) => {
     try {
-        const [rows] = await pool.execute('SELECT * FROM salesmen WHERE salesman_id = ? AND deleted_at IS NULL', [req.params.id]);
+        const [rows] = await db_1.default.execute('SELECT * FROM salesmen WHERE salesman_id = ? AND deleted_at IS NULL', [req.params.id]);
         if (rows.length === 0)
             return res.status(404).json({ success: false, message: 'Salesman not found' });
         res.json({ success: true, data: rows[0] });
@@ -19,38 +26,42 @@ export const getSalesmanById = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
-export const createSalesman = async (req, res) => {
+exports.getSalesmanById = getSalesmanById;
+const createSalesman = async (req, res) => {
     const { name_en, name_ar, phone, email, commission_rate } = req.body;
     try {
-        const [result] = await pool.execute('INSERT INTO salesmen (name_en, name_ar, phone, email, commission_rate) VALUES (?, ?, ?, ?, ?)', [name_en, name_ar, phone, email, commission_rate || 0]);
+        const [result] = await db_1.default.execute('INSERT INTO salesmen (name_en, name_ar, phone, email, commission_rate) VALUES (?, ?, ?, ?, ?)', [name_en, name_ar, phone, email, commission_rate || 0]);
         res.status(201).json({ success: true, data: { salesman_id: result.insertId, ...req.body } });
     }
     catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 };
-export const updateSalesman = async (req, res) => {
+exports.createSalesman = createSalesman;
+const updateSalesman = async (req, res) => {
     const { name_en, name_ar, phone, email, commission_rate, status } = req.body;
     try {
-        await pool.execute('UPDATE salesmen SET name_en = ?, name_ar = ?, phone = ?, email = ?, commission_rate = ?, status = ? WHERE salesman_id = ?', [name_en, name_ar, phone, email, commission_rate, status, req.params.id]);
+        await db_1.default.execute('UPDATE salesmen SET name_en = ?, name_ar = ?, phone = ?, email = ?, commission_rate = ?, status = ? WHERE salesman_id = ?', [name_en, name_ar, phone, email, commission_rate, status, req.params.id]);
         res.json({ success: true, message: 'Salesman updated successfully' });
     }
     catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 };
-export const deleteSalesman = async (req, res) => {
+exports.updateSalesman = updateSalesman;
+const deleteSalesman = async (req, res) => {
     try {
-        await pool.execute('UPDATE salesmen SET deleted_at = NOW() WHERE salesman_id = ?', [req.params.id]);
+        await db_1.default.execute('UPDATE salesmen SET deleted_at = NOW() WHERE salesman_id = ?', [req.params.id]);
         res.json({ success: true, message: 'Salesman deleted successfully' });
     }
     catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 };
-export const getSalesmanPerformance = async (req, res) => {
+exports.deleteSalesman = deleteSalesman;
+const getSalesmanPerformance = async (req, res) => {
     try {
-        const [rows] = await pool.execute(`
+        const [rows] = await db_1.default.execute(`
             SELECT 
                 s.salesman_id,
                 s.name_en,
@@ -68,3 +79,4 @@ export const getSalesmanPerformance = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+exports.getSalesmanPerformance = getSalesmanPerformance;

@@ -1,22 +1,24 @@
-import express from 'express';
-import cors from 'cors';
-import path from 'path';
-import { fileURLToPath } from 'url';
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-import helmet from 'helmet';
-import morgan from 'morgan';
-import { config } from './config/config';
-import { errorResponse } from './utils/response';
-import routes from './routes';
-import { errorHandler } from './middleware/error.middleware';
-import pool from './config/db';
-const app = express();
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = __importDefault(require("express"));
+const cors_1 = __importDefault(require("cors"));
+const path_1 = __importDefault(require("path"));
+const helmet_1 = __importDefault(require("helmet"));
+const morgan_1 = __importDefault(require("morgan"));
+const config_1 = require("./config/config");
+const response_1 = require("./utils/response");
+const routes_1 = __importDefault(require("./routes"));
+const error_middleware_1 = require("./middleware/error.middleware");
+const db_1 = __importDefault(require("./config/db"));
+const app = (0, express_1.default)();
 // 🛡️ Fresh 'n' Fast - Elite FIFO Migration Hub
 // Automatically provisions the 'inventory_batches' table to track purchase costs per batch.
 const initFIFOEngine = async () => {
     try {
-        await pool.execute(`
+        await db_1.default.execute(`
             CREATE TABLE IF NOT EXISTS inventory_batches (
                 batch_id INT AUTO_INCREMENT PRIMARY KEY,
                 inventory_item_id INT NOT NULL,
@@ -39,7 +41,7 @@ const initFIFOEngine = async () => {
 };
 const initTenantEngine = async () => {
     try {
-        await pool.execute(`
+        await db_1.default.execute(`
             CREATE TABLE IF NOT EXISTS tenants (
                 tenant_id INT AUTO_INCREMENT PRIMARY KEY,
                 name VARCHAR(255) NOT NULL,
@@ -60,7 +62,7 @@ const initTenantEngine = async () => {
 };
 const initDistributionEngine = async () => {
     try {
-        await pool.execute(`
+        await db_1.default.execute(`
             CREATE TABLE IF NOT EXISTS partner_branches (
                 branch_id INT AUTO_INCREMENT PRIMARY KEY,
                 partner_id INT NOT NULL,
@@ -77,14 +79,14 @@ const initDistributionEngine = async () => {
         `);
         // 🛡️ ELITE BRANCH SEGREGATION SYNC
         try {
-            await pool.execute(`ALTER TABLE sales_orders ADD COLUMN branch_id INT DEFAULT NULL`);
+            await db_1.default.execute(`ALTER TABLE sales_orders ADD COLUMN branch_id INT DEFAULT NULL`);
         }
         catch (err) {
             if (err.errno !== 1060)
                 console.error("Sales Order Column Sync:", err.message);
         }
         try {
-            await pool.execute(`ALTER TABLE sales_orders ADD CONSTRAINT fk_sales_order_branch FOREIGN KEY (branch_id) REFERENCES partner_branches(branch_id) ON DELETE SET NULL`);
+            await db_1.default.execute(`ALTER TABLE sales_orders ADD CONSTRAINT fk_sales_order_branch FOREIGN KEY (branch_id) REFERENCES partner_branches(branch_id) ON DELETE SET NULL`);
         }
         catch (err) {
             if (err.errno !== 1061)
@@ -92,14 +94,14 @@ const initDistributionEngine = async () => {
         }
         // 🛡️ ELITE PROCUREMENT SEGREGATION SYNC
         try {
-            await pool.execute(`ALTER TABLE purchase_orders ADD COLUMN branch_id INT DEFAULT NULL`);
+            await db_1.default.execute(`ALTER TABLE purchase_orders ADD COLUMN branch_id INT DEFAULT NULL`);
         }
         catch (err) {
             if (err.errno !== 1060)
                 console.error("Purchase Order Column Sync:", err.message);
         }
         try {
-            await pool.execute(`ALTER TABLE purchase_orders ADD CONSTRAINT fk_purchase_order_branch FOREIGN KEY (branch_id) REFERENCES partner_branches(branch_id) ON DELETE SET NULL`);
+            await db_1.default.execute(`ALTER TABLE purchase_orders ADD CONSTRAINT fk_purchase_order_branch FOREIGN KEY (branch_id) REFERENCES partner_branches(branch_id) ON DELETE SET NULL`);
         }
         catch (err) {
             if (err.errno !== 1061)
@@ -109,7 +111,7 @@ const initDistributionEngine = async () => {
         const tablesToSync = ['production_logs', 'sales_orders', 'sales_returns'];
         for (const table of tablesToSync) {
             try {
-                await pool.execute(`ALTER TABLE ${table} ADD COLUMN deleted_at TIMESTAMP NULL DEFAULT NULL`);
+                await db_1.default.execute(`ALTER TABLE ${table} ADD COLUMN deleted_at TIMESTAMP NULL DEFAULT NULL`);
             }
             catch (err) {
                 if (err.errno !== 1060)
@@ -118,28 +120,28 @@ const initDistributionEngine = async () => {
         }
         // 🛡️ WASTAGE REPORTING ENGINE SYNC
         try {
-            await pool.execute(`ALTER TABLE wastage ADD COLUMN menu_item_id INT DEFAULT NULL AFTER product_id`);
+            await db_1.default.execute(`ALTER TABLE wastage ADD COLUMN menu_item_id INT DEFAULT NULL AFTER product_id`);
         }
         catch (err) {
             if (err.errno !== 1060)
                 console.error("Wastage Column Sync (menu_item):", err.message);
         }
         try {
-            await pool.execute(`ALTER TABLE wastage ADD COLUMN vendor_id INT DEFAULT NULL AFTER menu_item_id`);
+            await db_1.default.execute(`ALTER TABLE wastage ADD COLUMN vendor_id INT DEFAULT NULL AFTER menu_item_id`);
         }
         catch (err) {
             if (err.errno !== 1060)
                 console.error("Wastage Column Sync (vendor_id):", err.message);
         }
         try {
-            await pool.execute(`ALTER TABLE wastage ADD CONSTRAINT fk_wastage_menu_item FOREIGN KEY (menu_item_id) REFERENCES menu_items(menu_item_id) ON DELETE SET NULL`);
+            await db_1.default.execute(`ALTER TABLE wastage ADD CONSTRAINT fk_wastage_menu_item FOREIGN KEY (menu_item_id) REFERENCES menu_items(menu_item_id) ON DELETE SET NULL`);
         }
         catch (err) {
             if (err.errno !== 1061)
                 console.error("Wastage Constraint Sync (menu_item):", err.message);
         }
         try {
-            await pool.execute(`ALTER TABLE wastage ADD CONSTRAINT fk_wastage_vendor FOREIGN KEY (vendor_id) REFERENCES vendors(vendor_id) ON DELETE SET NULL`);
+            await db_1.default.execute(`ALTER TABLE wastage ADD CONSTRAINT fk_wastage_vendor FOREIGN KEY (vendor_id) REFERENCES vendors(vendor_id) ON DELETE SET NULL`);
         }
         catch (err) {
             if (err.errno !== 1061)
@@ -147,7 +149,7 @@ const initDistributionEngine = async () => {
         }
         // 🛡️ SALESMAN MODULE ENGINE SYNC
         try {
-            await pool.execute(`
+            await db_1.default.execute(`
                 CREATE TABLE IF NOT EXISTS salesmen (
                     salesman_id INT AUTO_INCREMENT PRIMARY KEY,
                     name_en VARCHAR(255) NOT NULL,
@@ -166,14 +168,14 @@ const initDistributionEngine = async () => {
             console.error("Salesman Table Sync:", err.message);
         }
         try {
-            await pool.execute(`ALTER TABLE sales_orders ADD COLUMN salesman_id INT NULL AFTER admin_id`);
+            await db_1.default.execute(`ALTER TABLE sales_orders ADD COLUMN salesman_id INT NULL AFTER admin_id`);
         }
         catch (err) {
             if (err.errno !== 1060)
                 console.error("Sales Order Salesman Sync:", err.message);
         }
         try {
-            await pool.execute(`ALTER TABLE sales_orders ADD CONSTRAINT fk_sales_salesman FOREIGN KEY (salesman_id) REFERENCES salesmen(salesman_id) ON DELETE SET NULL`);
+            await db_1.default.execute(`ALTER TABLE sales_orders ADD CONSTRAINT fk_sales_salesman FOREIGN KEY (salesman_id) REFERENCES salesmen(salesman_id) ON DELETE SET NULL`);
         }
         catch (err) {
             if (err.errno !== 1061)
@@ -181,7 +183,7 @@ const initDistributionEngine = async () => {
         }
         // 🛡️ OPERATIONAL EXPENSES SYNC
         try {
-            await pool.execute(`
+            await db_1.default.execute(`
                 CREATE TABLE IF NOT EXISTS operational_expenses (
                     expense_id INT AUTO_INCREMENT PRIMARY KEY,
                     type ENUM('Labor Expense', 'Other Expense') NOT NULL,
@@ -206,7 +208,7 @@ initTenantEngine();
 // FIFO and Distribution tables are initialized directly via schema.sql and migrations in tenant databases.
 // We disable these startup syncs because kms_master is now a clean control DB and does not contain operational tables.
 // Middlewares
-app.use(helmet({
+app.use((0, helmet_1.default)({
     contentSecurityPolicy: false,
     crossOriginResourcePolicy: { policy: "cross-origin" },
     crossOriginEmbedderPolicy: false
@@ -215,43 +217,33 @@ const allowedOrigins = [
     'http://localhost:5173',
     'http://localhost:5177',
     'http://localhost:5176', // Front-end dev port from package.json script
-    config.corsOrigin, // Auto-read from .env.production
+    config_1.config.corsOrigin, // Auto-read from .env.production
     'https://kms.ansoftt.com',
     'https://api.kms.ansoftt.com',
     'https://admin.kms.ansoftt.com'
 ];
-app.use(cors({
-    origin: (origin, callback) => {
-        // Allow requests with no origin (like mobile apps or curl requests)
-        if (!origin)
-            return callback(null, true);
-        if (allowedOrigins.indexOf(origin) !== -1 || origin.startsWith('http://localhost:')) {
-            callback(null, true);
-        }
-        else {
-            callback(new Error('Policy violation: CORS origin mismatch. Access denied. 🛡️'));
-        }
-    },
+app.use((0, cors_1.default)({
+    origin: true,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
 }));
-app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
-app.use('/api/uploads', express.static(path.join(process.cwd(), 'uploads')));
-app.use(morgan(config.env === 'development' ? 'dev' : 'combined'));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use('/uploads', express_1.default.static(path_1.default.join(process.cwd(), 'uploads')));
+app.use('/api/uploads', express_1.default.static(path_1.default.join(process.cwd(), 'uploads')));
+app.use((0, morgan_1.default)(config_1.config.env === 'development' ? 'dev' : 'combined'));
+app.use(express_1.default.json());
+app.use(express_1.default.urlencoded({ extended: true }));
 // Global Health Check
 app.get('/health', (req, res) => {
-    res.status(200).json({ status: 'OK', env: config.env });
+    res.status(200).json({ status: 'OK', env: config_1.config.env });
 });
 // Routes
-app.get('/api/debug-db', async (req, res) => { const [rows] = await pool.query('SELECT DATABASE() as db'); res.json(rows[0]); });
-app.use('/api', routes);
+app.get('/api/debug-db', async (req, res) => { const [rows] = await db_1.default.query('SELECT DATABASE() as db'); res.json(rows[0]); });
+app.use('/api', routes_1.default);
 // 404 Handler
 app.use((req, res) => {
-    return errorResponse(res, 'Route not found', 404);
+    return (0, response_1.errorResponse)(res, 'Route not found', 404);
 });
 // Global Error Handler
-app.use(errorHandler);
-export default app;
+app.use(error_middleware_1.errorHandler);
+exports.default = app;

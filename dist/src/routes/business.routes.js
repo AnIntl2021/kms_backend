@@ -1,22 +1,24 @@
-import { Router } from 'express';
-import { getProducts, createProduct, updateProduct, deleteProduct } from '../controllers/product.controller';
-import { getSettings, updateSettings } from '../controllers/settings.controller';
-import { getCategories, createCategory, updateCategory, deleteCategory } from '../controllers/category.controller';
-import { getAuditLogs } from '../controllers/auth.controller';
-import { authMiddleware, authorize } from '../middleware/auth.middleware';
-const router = Router();
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const product_controller_1 = require("../controllers/product.controller");
+const settings_controller_1 = require("../controllers/settings.controller");
+const category_controller_1 = require("../controllers/category.controller");
+const auth_controller_1 = require("../controllers/auth.controller");
+const auth_middleware_1 = require("../middleware/auth.middleware");
+const router = (0, express_1.Router)();
 // Products
-router.get('/products', authMiddleware, getProducts);
-router.post('/products', authMiddleware, authorize(['super_admin', 'inventory_controller']), createProduct);
-router.put('/products/:id', authMiddleware, authorize(['super_admin', 'inventory_controller']), updateProduct);
-router.delete('/products/:id', authMiddleware, authorize(['super_admin', 'inventory_controller']), deleteProduct);
+router.get('/products', auth_middleware_1.authMiddleware, product_controller_1.getProducts);
+router.post('/products', auth_middleware_1.authMiddleware, (0, auth_middleware_1.authorize)(['super_admin', 'inventory_controller']), product_controller_1.createProduct);
+router.put('/products/:id', auth_middleware_1.authMiddleware, (0, auth_middleware_1.authorize)(['super_admin', 'inventory_controller']), product_controller_1.updateProduct);
+router.delete('/products/:id', auth_middleware_1.authMiddleware, (0, auth_middleware_1.authorize)(['super_admin', 'inventory_controller']), product_controller_1.deleteProduct);
 // Categories
-router.get('/categories', authMiddleware, getCategories);
-router.post('/categories', authMiddleware, authorize(['super_admin', 'manager']), createCategory);
-router.put('/categories/:id', authMiddleware, authorize(['super_admin']), updateCategory);
-router.delete('/categories/:id', authMiddleware, authorize(['super_admin']), deleteCategory);
+router.get('/categories', auth_middleware_1.authMiddleware, category_controller_1.getCategories);
+router.post('/categories', auth_middleware_1.authMiddleware, (0, auth_middleware_1.authorize)(['super_admin', 'manager']), category_controller_1.createCategory);
+router.put('/categories/:id', auth_middleware_1.authMiddleware, (0, auth_middleware_1.authorize)(['super_admin']), category_controller_1.updateCategory);
+router.delete('/categories/:id', auth_middleware_1.authMiddleware, (0, auth_middleware_1.authorize)(['super_admin']), category_controller_1.deleteCategory);
 // Settings & Logs
-router.get('/settings', getSettings); // Public so app can check for force update
-router.put('/settings', authMiddleware, authorize(['super_admin']), updateSettings);
-router.get('/audit-logs', authMiddleware, authorize(['super_admin']), getAuditLogs);
-export default router;
+router.get('/settings', settings_controller_1.getSettings); // Public so app can check for force update
+router.put('/settings', auth_middleware_1.authMiddleware, (0, auth_middleware_1.authorize)(['super_admin']), settings_controller_1.updateSettings);
+router.get('/audit-logs', auth_middleware_1.authMiddleware, (0, auth_middleware_1.authorize)(['super_admin']), auth_controller_1.getAuditLogs);
+exports.default = router;

@@ -1,8 +1,10 @@
-import { Router } from 'express';
-import { getSettings, updateSettings, triggerBackup } from '../controllers/settings.controller';
-import { authMiddleware } from '../middleware/auth.middleware';
-const router = Router();
-router.get('/', authMiddleware, getSettings);
-router.post('/update', authMiddleware, updateSettings);
-router.post('/backup', authMiddleware, triggerBackup);
-export default router;
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const settings_controller_1 = require("../controllers/settings.controller");
+const auth_middleware_1 = require("../middleware/auth.middleware");
+const router = (0, express_1.Router)();
+router.get('/', auth_middleware_1.authMiddleware, settings_controller_1.getSettings);
+router.post('/update', auth_middleware_1.authMiddleware, settings_controller_1.updateSettings);
+router.post('/backup', auth_middleware_1.authMiddleware, settings_controller_1.triggerBackup);
+exports.default = router;

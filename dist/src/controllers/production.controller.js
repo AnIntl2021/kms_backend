@@ -1,8 +1,14 @@
-import pool from '../config/db';
-import { successResponse, errorResponse } from '../utils/response';
-export const getProductionLogs = async (req, res) => {
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.deleteProductionBatch = exports.recordBatchProduction = exports.getProductionLogs = void 0;
+const db_1 = __importDefault(require("../config/db"));
+const response_1 = require("../utils/response");
+const getProductionLogs = async (req, res) => {
     try {
-        const [logs] = await pool.execute(`
+        const [logs] = await db_1.default.execute(`
       SELECT 
         pl.production_id, pl.batch_number, 
         DATE_FORMAT(pl.production_date, '%Y-%m-%d') as production_date, 
@@ -18,14 +24,15 @@ export const getProductionLogs = async (req, res) => {
       GROUP BY pl.production_id
       ORDER BY pl.production_date DESC, pl.production_id DESC
     `);
-        return successResponse(res, logs);
+        return (0, response_1.successResponse)(res, logs);
     }
     catch (error) {
-        return errorResponse(res, 'Failed to fetch production logs', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to fetch production logs', 500, error);
     }
 };
-export const recordBatchProduction = async (req, res) => {
-    const connection = await pool.getConnection();
+exports.getProductionLogs = getProductionLogs;
+const recordBatchProduction = async (req, res) => {
+    const connection = await db_1.default.getConnection();
     try {
         await connection.beginTransaction();
         const { production_date, expiry_date, items, branch_id, vendor_id } = req.body;
@@ -60,18 +67,19 @@ export const recordBatchProduction = async (req, res) => {
             }
         }
         await connection.commit();
-        return successResponse(res, { production_id, batch_number }, 'Batch production recorded successfully!');
+        return (0, response_1.successResponse)(res, { production_id, batch_number }, 'Batch production recorded successfully!');
     }
     catch (error) {
         await connection.rollback();
-        return errorResponse(res, error.message || 'Production failed');
+        return (0, response_1.errorResponse)(res, error.message || 'Production failed');
     }
     finally {
         connection.release();
     }
 };
-export const deleteProductionBatch = async (req, res) => {
-    const connection = await pool.getConnection();
+exports.recordBatchProduction = recordBatchProduction;
+const deleteProductionBatch = async (req, res) => {
+    const connection = await db_1.default.getConnection();
     try {
         await connection.beginTransaction();
         const { id } = req.params;
@@ -109,15 +117,16 @@ export const deleteProductionBatch = async (req, res) => {
         // 3. Mark as deleted
         await connection.execute('UPDATE production_logs SET deleted_at = CURRENT_TIMESTAMP WHERE production_id = ?', [id]);
         await connection.commit();
-        return successResponse(res, null, 'Production batch deleted and stock reverted successfully');
+        return (0, response_1.successResponse)(res, null, 'Production batch deleted and stock reverted successfully');
     }
     catch (error) {
         if (connection)
             await connection.rollback();
-        return errorResponse(res, 'Failed to delete and revert production batch: ' + error.message, 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to delete and revert production batch: ' + error.message, 500, error);
     }
     finally {
         if (connection)
             connection.release();
     }
 };
+exports.deleteProductionBatch = deleteProductionBatch;

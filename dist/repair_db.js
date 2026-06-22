@@ -1,8 +1,13 @@
-import mysql from 'mysql2/promise';
-import dotenv from 'dotenv';
-import path from 'path';
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const promise_1 = __importDefault(require("mysql2/promise"));
+const dotenv_1 = __importDefault(require("dotenv"));
+const path_1 = __importDefault(require("path"));
 const envFile = process.env.NODE_ENV === 'production' ? '.env.production' : '.env.development';
-dotenv.config({ path: path.resolve(process.cwd(), envFile) });
+dotenv_1.default.config({ path: path_1.default.resolve(process.cwd(), envFile) });
 const dbConfig = {
     host: process.env.DB_HOST || 'localhost',
     user: process.env.DB_USER || 'root',
@@ -12,7 +17,7 @@ const dbConfig = {
 async function repairDB() {
     let masterPool;
     try {
-        masterPool = mysql.createPool(dbConfig);
+        masterPool = promise_1.default.createPool(dbConfig);
         console.log('🔄 STARTING COMPREHENSIVE MULTI-TENANT LIVE SYNC...');
         // Fetch all tenant databases from master DB
         let tenantDbs = [];
@@ -27,7 +32,7 @@ async function repairDB() {
         console.log(`Databases to sync: ${databases.join(', ')}`);
         for (const dbName of databases) {
             console.log(`\n⚙️ Synchronizing database: ${dbName}...`);
-            const pool = mysql.createPool({
+            const pool = promise_1.default.createPool({
                 ...dbConfig,
                 database: dbName
             });

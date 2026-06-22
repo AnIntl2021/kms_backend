@@ -1,5 +1,11 @@
-import pool from '../config/db.js';
-import { successResponse, errorResponse } from '../utils/response.js';
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.getOperationalPNL = exports.getClientStatements = exports.getFoodCostReport = exports.getProductPerformanceReport = exports.getPurchaseReport = exports.getAnalyticsSummary = exports.getWastageReport = exports.getProductionReport = exports.getSalesReport = void 0;
+const db_js_1 = __importDefault(require("../config/db.js"));
+const response_js_1 = require("../utils/response.js");
 const getReportScope = (req) => {
     const user = req.user;
     const userBrandId = user?.brand_id || null;
@@ -12,7 +18,7 @@ const getReportScope = (req) => {
         branchId: userBranchId ? userBranchId : queryBranchId
     };
 };
-export const getSalesReport = async (req, res) => {
+const getSalesReport = async (req, res) => {
     try {
         const { startDate, endDate, vendor_id, salesman_id } = req.query;
         const { brandId, branchId } = getReportScope(req);
@@ -67,15 +73,16 @@ export const getSalesReport = async (req, res) => {
             params.push(salesman_id);
         }
         query += ` ORDER BY s.created_at DESC`;
-        const [rows] = await pool.execute(query, params);
-        return successResponse(res, rows);
+        const [rows] = await db_js_1.default.execute(query, params);
+        return (0, response_js_1.successResponse)(res, rows);
     }
     catch (error) {
         console.error('Sales Report Error:', error);
-        return errorResponse(res, 'Failed to fetch sales report', 500, error);
+        return (0, response_js_1.errorResponse)(res, 'Failed to fetch sales report', 500, error);
     }
 };
-export const getProductionReport = async (req, res) => {
+exports.getSalesReport = getSalesReport;
+const getProductionReport = async (req, res) => {
     try {
         const { startDate, endDate } = req.query;
         let query = `
@@ -99,15 +106,16 @@ export const getProductionReport = async (req, res) => {
             params.push(startDate, endDate);
         }
         query += ` ORDER BY COALESCE(pl.production_date, pl.created_at) DESC`;
-        const [rows] = await pool.execute(query, params);
-        return successResponse(res, rows);
+        const [rows] = await db_js_1.default.execute(query, params);
+        return (0, response_js_1.successResponse)(res, rows);
     }
     catch (error) {
         console.error('Production Report Error:', error);
-        return errorResponse(res, 'Failed to fetch production report', 500, error);
+        return (0, response_js_1.errorResponse)(res, 'Failed to fetch production report', 500, error);
     }
 };
-export const getWastageReport = async (req, res) => {
+exports.getProductionReport = getProductionReport;
+const getWastageReport = async (req, res) => {
     try {
         const { startDate, endDate, vendor_id, salesman_id } = req.query;
         const { brandId, branchId } = getReportScope(req);
@@ -154,15 +162,16 @@ export const getWastageReport = async (req, res) => {
             params.push(salesman_id);
         }
         query += ` ORDER BY w.created_at DESC`;
-        const [rows] = await pool.execute(query, params);
-        return successResponse(res, rows);
+        const [rows] = await db_js_1.default.execute(query, params);
+        return (0, response_js_1.successResponse)(res, rows);
     }
     catch (error) {
         console.error('Wastage Report Error:', error);
-        return errorResponse(res, 'Failed to fetch wastage report', 500, error);
+        return (0, response_js_1.errorResponse)(res, 'Failed to fetch wastage report', 500, error);
     }
 };
-export const getAnalyticsSummary = async (req, res) => {
+exports.getWastageReport = getWastageReport;
+const getAnalyticsSummary = async (req, res) => {
     try {
         const { startDate, endDate, vendor_id, salesman_id } = req.query;
         const { brandId, branchId } = getReportScope(req);
@@ -251,10 +260,10 @@ export const getAnalyticsSummary = async (req, res) => {
       WHERE 1=1 ${wastageDateFilter} ${wastageVendorFilter}
       GROUP BY w.reason_en
     `;
-        const [dailyTrend] = await pool.execute(dailyQuery, queryParams);
-        const [topCustomers] = await pool.execute(customersQuery, queryParams);
-        const [wastageReasons] = await pool.execute(wastageQuery, wastageParams);
-        return successResponse(res, {
+        const [dailyTrend] = await db_js_1.default.execute(dailyQuery, queryParams);
+        const [topCustomers] = await db_js_1.default.execute(customersQuery, queryParams);
+        const [wastageReasons] = await db_js_1.default.execute(wastageQuery, wastageParams);
+        return (0, response_js_1.successResponse)(res, {
             dailyTrend,
             topCustomers,
             wastageReasons
@@ -262,10 +271,11 @@ export const getAnalyticsSummary = async (req, res) => {
     }
     catch (error) {
         console.error('Analytics Summary Error:', error);
-        return errorResponse(res, 'Failed to fetch analytics summary', 500, error);
+        return (0, response_js_1.errorResponse)(res, 'Failed to fetch analytics summary', 500, error);
     }
 };
-export const getPurchaseReport = async (req, res) => {
+exports.getAnalyticsSummary = getAnalyticsSummary;
+const getPurchaseReport = async (req, res) => {
     try {
         const { startDate, endDate, vendor_id } = req.query;
         const { brandId, branchId } = getReportScope(req);
@@ -299,15 +309,16 @@ export const getPurchaseReport = async (req, res) => {
             params.push(brandId);
         }
         query += ` ORDER BY po.date DESC, po.purchase_id DESC`;
-        const [rows] = await pool.execute(query, params);
-        return successResponse(res, rows);
+        const [rows] = await db_js_1.default.execute(query, params);
+        return (0, response_js_1.successResponse)(res, rows);
     }
     catch (error) {
         console.error('Purchase Report Error:', error);
-        return errorResponse(res, 'Failed to fetch purchase report', 500, error);
+        return (0, response_js_1.errorResponse)(res, 'Failed to fetch purchase report', 500, error);
     }
 };
-export const getProductPerformanceReport = async (req, res) => {
+exports.getPurchaseReport = getPurchaseReport;
+const getProductPerformanceReport = async (req, res) => {
     try {
         const { startDate, endDate, vendor_id, salesman_id } = req.query;
         const { brandId, branchId } = getReportScope(req);
@@ -402,7 +413,7 @@ export const getProductPerformanceReport = async (req, res) => {
             params.push(salesman_id);
         }
         query += ` GROUP BY mi.menu_item_id ORDER BY total_sold DESC`;
-        const [rows] = await pool.execute(query, params);
+        const [rows] = await db_js_1.default.execute(query, params);
         // 🚀 WOW ENRICHMENT
         const totalRevenue = rows.reduce((acc, r) => acc + Number(r.revenue), 0);
         const enrichedRows = rows.map((r) => ({
@@ -411,14 +422,15 @@ export const getProductPerformanceReport = async (req, res) => {
             contribution: totalRevenue > 0 ? ((Number(r.revenue) / totalRevenue) * 100).toFixed(1) : 0,
             return_rate: r.total_sold > 0 ? ((Number(r.returns_qty) / Number(r.total_sold)) * 100).toFixed(1) : 0
         }));
-        return successResponse(res, enrichedRows);
+        return (0, response_js_1.successResponse)(res, enrichedRows);
     }
     catch (error) {
         console.error('Product Performance Sales-Centric Error:', error);
-        return errorResponse(res, 'Failed to fetch product performance report', 500, error);
+        return (0, response_js_1.errorResponse)(res, 'Failed to fetch product performance report', 500, error);
     }
 };
-export const getFoodCostReport = async (req, res) => {
+exports.getProductPerformanceReport = getProductPerformanceReport;
+const getFoodCostReport = async (req, res) => {
     try {
         const { startDate, endDate } = req.query;
         const { brandId, branchId } = getReportScope(req);
@@ -440,7 +452,7 @@ export const getFoodCostReport = async (req, res) => {
         }
         itemsQuery += ` ORDER BY c.name_en ASC, ii.name_en ASC`;
         // 1. Fetch active inventory items
-        const [items] = await pool.execute(itemsQuery, itemsParams);
+        const [items] = await db_js_1.default.execute(itemsQuery, itemsParams);
         // 2. Fetch receiving quantities for all items in date range in bulk
         let recQuery = `
       SELECT poi.inventory_item_id, SUM(poi.quantity) as total_qty
@@ -459,7 +471,7 @@ export const getFoodCostReport = async (req, res) => {
             recParams.push(brandId);
         }
         recQuery += ` GROUP BY poi.inventory_item_id`;
-        const [receivingRows] = await pool.execute(recQuery, recParams);
+        const [receivingRows] = await db_js_1.default.execute(recQuery, recParams);
         const receivingMap = new Map(receivingRows.map((r) => [r.inventory_item_id, parseFloat(r.total_qty || 0)]));
         // 3. Fetch wastage quantities in date range in bulk
         let wasteQuery = `
@@ -479,7 +491,7 @@ export const getFoodCostReport = async (req, res) => {
             wasteParams.push(brandId, brandId);
         }
         wasteQuery += ` GROUP BY w.inventory_item_id`;
-        const [wastageRows] = await pool.execute(wasteQuery, wasteParams);
+        const [wastageRows] = await db_js_1.default.execute(wasteQuery, wasteParams);
         const wastageMap = new Map(wastageRows.map((r) => [r.inventory_item_id, parseFloat(r.total_qty || 0)]));
         // 4. Fetch production usage in date range in bulk
         let prodQuery = `
@@ -501,7 +513,7 @@ export const getFoodCostReport = async (req, res) => {
             prodParams.push(brandId);
         }
         prodQuery += ` GROUP BY mii.inventory_item_id`;
-        const [productionRows] = await pool.execute(prodQuery, prodParams);
+        const [productionRows] = await db_js_1.default.execute(prodQuery, prodParams);
         const productionMap = new Map(productionRows.map((r) => [r.inventory_item_id, parseFloat(r.total_qty || 0)]));
         // 5. Fetch receiving since start in bulk (for opening stock back-calc)
         let recSinceStartQuery = `
@@ -521,7 +533,7 @@ export const getFoodCostReport = async (req, res) => {
             recSinceStartParams.push(brandId);
         }
         recSinceStartQuery += ` GROUP BY poi.inventory_item_id`;
-        const [recSinceStartRows] = await pool.execute(recSinceStartQuery, recSinceStartParams);
+        const [recSinceStartRows] = await db_js_1.default.execute(recSinceStartQuery, recSinceStartParams);
         const recSinceStartMap = new Map(recSinceStartRows.map((r) => [r.inventory_item_id, parseFloat(r.total_qty || 0)]));
         // 6. Fetch wastage since start in bulk (for opening stock back-calc)
         let wasteSinceStartQuery = `
@@ -541,7 +553,7 @@ export const getFoodCostReport = async (req, res) => {
             wasteSinceStartParams.push(brandId, brandId);
         }
         wasteSinceStartQuery += ` GROUP BY w.inventory_item_id`;
-        const [wasteSinceStartRows] = await pool.execute(wasteSinceStartQuery, wasteSinceStartParams);
+        const [wasteSinceStartRows] = await db_js_1.default.execute(wasteSinceStartQuery, wasteSinceStartParams);
         const wasteSinceStartMap = new Map(wasteSinceStartRows.map((r) => [r.inventory_item_id, parseFloat(r.total_qty || 0)]));
         // 7. Fetch production usage since start in bulk (for opening stock back-calc)
         let prodSinceStartQuery = `
@@ -563,7 +575,7 @@ export const getFoodCostReport = async (req, res) => {
             prodSinceStartParams.push(brandId);
         }
         prodSinceStartQuery += ` GROUP BY mii.inventory_item_id`;
-        const [prodSinceStartRows] = await pool.execute(prodSinceStartQuery, prodSinceStartParams);
+        const [prodSinceStartRows] = await db_js_1.default.execute(prodSinceStartQuery, prodSinceStartParams);
         const prodSinceStartMap = new Map(prodSinceStartRows.map((r) => [r.inventory_item_id, parseFloat(r.total_qty || 0)]));
         // 8. Fetch receiving AFTER end date (for closing stock back-calc)
         let recAfterEndQuery = `
@@ -583,7 +595,7 @@ export const getFoodCostReport = async (req, res) => {
             recAfterEndParams.push(brandId);
         }
         recAfterEndQuery += ` GROUP BY poi.inventory_item_id`;
-        const [recAfterEndRows] = await pool.execute(recAfterEndQuery, recAfterEndParams);
+        const [recAfterEndRows] = await db_js_1.default.execute(recAfterEndQuery, recAfterEndParams);
         const recAfterEndMap = new Map(recAfterEndRows.map((r) => [r.inventory_item_id, parseFloat(r.total_qty || 0)]));
         // 9. Fetch wastage AFTER end date (for closing stock back-calc)
         let wasteAfterEndQuery = `
@@ -603,7 +615,7 @@ export const getFoodCostReport = async (req, res) => {
             wasteAfterEndParams.push(brandId, brandId);
         }
         wasteAfterEndQuery += ` GROUP BY w.inventory_item_id`;
-        const [wasteAfterEndRows] = await pool.execute(wasteAfterEndQuery, wasteAfterEndParams);
+        const [wasteAfterEndRows] = await db_js_1.default.execute(wasteAfterEndQuery, wasteAfterEndParams);
         const wasteAfterEndMap = new Map(wasteAfterEndRows.map((r) => [r.inventory_item_id, parseFloat(r.total_qty || 0)]));
         // 10. Fetch production usage AFTER end date (for closing stock back-calc)
         let prodAfterEndQuery = `
@@ -625,7 +637,7 @@ export const getFoodCostReport = async (req, res) => {
             prodAfterEndParams.push(brandId);
         }
         prodAfterEndQuery += ` GROUP BY mii.inventory_item_id`;
-        const [prodAfterEndRows] = await pool.execute(prodAfterEndQuery, prodAfterEndParams);
+        const [prodAfterEndRows] = await db_js_1.default.execute(prodAfterEndQuery, prodAfterEndParams);
         const prodAfterEndMap = new Map(prodAfterEndRows.map((r) => [r.inventory_item_id, parseFloat(r.total_qty || 0)]));
         // 11. Assemble report data
         const reportData = items.map((item) => {
@@ -676,19 +688,20 @@ export const getFoodCostReport = async (req, res) => {
             salesQuery += ` AND brand_id = ?`;
             salesParams.push(brandId);
         }
-        const [salesRows] = await pool.execute(salesQuery, salesParams);
+        const [salesRows] = await db_js_1.default.execute(salesQuery, salesParams);
         const salesRevenue = parseFloat(salesRows[0]?.revenue || 0);
-        return successResponse(res, {
+        return (0, response_js_1.successResponse)(res, {
             items: reportData,
             sales_revenue: salesRevenue
         });
     }
     catch (error) {
         console.error('Food Cost Report Error:', error);
-        return errorResponse(res, 'Failed to fetch food cost report', 500, error);
+        return (0, response_js_1.errorResponse)(res, 'Failed to fetch food cost report', 500, error);
     }
 };
-export const getClientStatements = async (req, res) => {
+exports.getFoodCostReport = getFoodCostReport;
+const getClientStatements = async (req, res) => {
     try {
         const { startDate, endDate, vendor_id } = req.query;
         const { brandId, branchId } = getReportScope(req);
@@ -722,13 +735,13 @@ export const getClientStatements = async (req, res) => {
             params.push(brandId);
         }
         query += ` ORDER BY s.created_at DESC, s.sale_id DESC`;
-        const [orders] = await pool.execute(query, params);
+        const [orders] = await db_js_1.default.execute(query, params);
         if (orders.length === 0) {
-            return successResponse(res, []);
+            return (0, response_js_1.successResponse)(res, []);
         }
         const orderIds = orders.map((o) => o.sale_id);
         const placeholders = orderIds.map(() => '?').join(',');
-        const [items] = await pool.execute(`
+        const [items] = await db_js_1.default.execute(`
       SELECT soi.*, mi.name_en, mi.name_ar,
         (SELECT COALESCE(SUM(sri.quantity), 0)
          FROM sales_return_items sri
@@ -744,14 +757,15 @@ export const getClientStatements = async (req, res) => {
                 items: items.filter((item) => item.sale_id === order.sale_id)
             };
         });
-        return successResponse(res, ordersWithItems);
+        return (0, response_js_1.successResponse)(res, ordersWithItems);
     }
     catch (error) {
         console.error('Client Statements Error:', error);
-        return errorResponse(res, 'Failed to fetch client statements', 500, error);
+        return (0, response_js_1.errorResponse)(res, 'Failed to fetch client statements', 500, error);
     }
 };
-export const getOperationalPNL = async (req, res) => {
+exports.getClientStatements = getClientStatements;
+const getOperationalPNL = async (req, res) => {
     try {
         const { startDate, endDate } = req.query;
         const { brandId, branchId } = getReportScope(req);
@@ -784,7 +798,7 @@ export const getOperationalPNL = async (req, res) => {
             salesParams.push(brandId);
         }
         salesQuery += ` GROUP BY c.name_en`;
-        const [salesRaw] = await pool.execute(salesQuery, salesParams);
+        const [salesRaw] = await db_js_1.default.execute(salesQuery, salesParams);
         // 2. RETURNS BY CATEGORY (to deduct from sales)
         let returnsQuery = `
       SELECT 
@@ -807,7 +821,7 @@ export const getOperationalPNL = async (req, res) => {
             returnsParams.push(brandId);
         }
         returnsQuery += ` GROUP BY c.name_en`;
-        const [returnsRaw] = await pool.execute(returnsQuery, returnsParams);
+        const [returnsRaw] = await db_js_1.default.execute(returnsQuery, returnsParams);
         // Merge Sales and Returns
         const salesMap = new Map();
         salesRaw.forEach((row) => {
@@ -849,7 +863,7 @@ export const getOperationalPNL = async (req, res) => {
             employeesParams.push(brandId);
         }
         employeesQuery += ` GROUP BY role`;
-        const [laborRaw] = await pool.execute(employeesQuery, employeesParams);
+        const [laborRaw] = await db_js_1.default.execute(employeesQuery, employeesParams);
         const laborExpenses = laborRaw.map((e) => ({ category: e.category, amount: Number(e.amount) }));
         // Pull Other Expenses from operational_expenses
         let expensesQuery = `
@@ -867,7 +881,7 @@ export const getOperationalPNL = async (req, res) => {
             expensesParams.push(brandId);
         }
         expensesQuery += ` GROUP BY category`;
-        const [expensesRaw] = await pool.execute(expensesQuery, expensesParams);
+        const [expensesRaw] = await db_js_1.default.execute(expensesQuery, expensesParams);
         const otherExpenses = expensesRaw.map((e) => ({ category: e.category, amount: Number(e.total) }));
         // Calculate Asset Depreciation (Monthly)
         let assetsQuery = `SELECT name, value, depreciation_rate FROM company_assets WHERE 1=1`;
@@ -880,7 +894,7 @@ export const getOperationalPNL = async (req, res) => {
             assetsQuery += ` AND brand_id = ?`;
             assetsParams.push(brandId);
         }
-        const [assetsRaw] = await pool.execute(assetsQuery, assetsParams);
+        const [assetsRaw] = await db_js_1.default.execute(assetsQuery, assetsParams);
         let totalMonthlyDepreciation = 0;
         assetsRaw.forEach((asset) => {
             const val = Number(asset.value) || 0;
@@ -908,7 +922,7 @@ export const getOperationalPNL = async (req, res) => {
             liabilitiesQuery += ` AND brand_id = ?`;
             liabilitiesParams.push(brandId);
         }
-        const [liabilitiesRaw] = await pool.execute(liabilitiesQuery, liabilitiesParams);
+        const [liabilitiesRaw] = await db_js_1.default.execute(liabilitiesQuery, liabilitiesParams);
         let totalMonthlyInterest = 0;
         liabilitiesRaw.forEach((liability) => {
             const amt = Number(liability.amount) || 0;
@@ -933,7 +947,7 @@ export const getOperationalPNL = async (req, res) => {
         const totalLabor = laborExpenses.reduce((sum, item) => sum + item.amount, 0);
         const totalOther = otherExpenses.reduce((sum, item) => sum + item.amount, 0);
         const netIncome = grossProfit - totalLabor - totalOther;
-        return successResponse(res, {
+        return (0, response_js_1.successResponse)(res, {
             salesByCategory,
             totalSales,
             totalCogs,
@@ -947,6 +961,7 @@ export const getOperationalPNL = async (req, res) => {
     }
     catch (error) {
         console.error('Operational PNL Error:', error);
-        return errorResponse(res, 'Failed to generate operational PNL', 500, error);
+        return (0, response_js_1.errorResponse)(res, 'Failed to generate operational PNL', 500, error);
     }
 };
+exports.getOperationalPNL = getOperationalPNL;

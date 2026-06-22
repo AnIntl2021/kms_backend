@@ -26,36 +26,37 @@ export const login = async (req: Request, res: Response) => {
         }
         targetDb = tenantRows[0].db_name;
     } else {
-        // Dynamic database discovery: Search tenants to see if the user's email belongs to one of them
-        const [allTenants]: any = await pool.execute('SELECT db_name FROM tenants WHERE status = "Active"');
-        let foundDb = null;
+        // Check master DB admins first to give super admins priority
+        const [checkMaster]: any = await pool.execute(
+            `SELECT admin_id FROM admins WHERE (username = ? OR email = ?) AND deleted_at IS NULL AND status = 'active'`,
+            [username, username]
+        );
         
-        // Loop through tenant databases to find where this email exists as an admin
-        for (const tenant of allTenants) {
-            try {
-                const [checkUser]: any = await pool.execute(
-                    `SELECT admin_id FROM \`${tenant.db_name}\`.admins WHERE (username = ? OR email = ?) AND deleted_at IS NULL AND status = 'active'`,
-                    [username, username]
-                );
-                if (checkUser && checkUser.length > 0) {
-                    foundDb = tenant.db_name;
-                    break;
-                }
-            } catch (err) {
-                // Ignore if connection or table lookup fails for a specific tenant db
-            }
-        }
-        
-        if (foundDb) {
-            targetDb = foundDb;
+        if (checkMaster && checkMaster.length > 0) {
+            targetDb = 'kms_master';
         } else {
-            // Check master DB admins
-            const [checkMaster]: any = await pool.execute(
-                `SELECT admin_id FROM admins WHERE (username = ? OR email = ?) AND deleted_at IS NULL AND status = 'active'`,
-                [username, username]
-            );
-            if (checkMaster && checkMaster.length > 0) {
-                targetDb = 'kms_master';
+            // Dynamic database discovery: Search tenants to see if the user's email belongs to one of them
+            const [allTenants]: any = await pool.execute('SELECT db_name FROM tenants WHERE status = "Active"');
+            let foundDb = null;
+            
+            // Loop through tenant databases to find where this email exists as an admin
+            for (const tenant of allTenants) {
+                try {
+                    const [checkUser]: any = await pool.execute(
+                        `SELECT admin_id FROM \`${tenant.db_name}\`.admins WHERE (username = ? OR email = ?) AND deleted_at IS NULL AND status = 'active'`,
+                        [username, username]
+                    );
+                    if (checkUser && checkUser.length > 0) {
+                        foundDb = tenant.db_name;
+                        break;
+                    }
+                } catch (err) {
+                    // Ignore if connection or table lookup fails for a specific tenant db
+                }
+            }
+            
+            if (foundDb) {
+                targetDb = foundDb;
             } else {
                 return errorResponse(res, 'Invalid credentials or account inactive', 401);
             }

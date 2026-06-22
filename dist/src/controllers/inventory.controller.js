@@ -1,7 +1,46 @@
-import { successResponse, errorResponse } from '../utils/response';
-import pool from '../config/db';
-import { logAudit } from '../utils/audit';
-export const getInventoryItems = async (req, res) => {
+"use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.getInventoryPackages = exports.adjustStock = exports.deleteInventoryItem = exports.updateInventoryItem = exports.createInventoryItem = exports.getInventoryItems = void 0;
+const response_1 = require("../utils/response");
+const db_1 = __importDefault(require("../config/db"));
+const audit_1 = require("../utils/audit");
+const getInventoryItems = async (req, res) => {
     try {
         const user = req.user;
         const { category_id, search } = req.query;
@@ -31,15 +70,16 @@ export const getInventoryItems = async (req, res) => {
             params.push(req.query.brand_id);
         }
         query += ' ORDER BY i.sort_order ASC, i.name_en ASC';
-        const [items] = await pool.execute(query, params);
-        return successResponse(res, items);
+        const [items] = await db_1.default.execute(query, params);
+        return (0, response_1.successResponse)(res, items);
     }
     catch (error) {
-        return errorResponse(res, 'Failed to fetch inventory items', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to fetch inventory items', 500, error);
     }
 };
-export const createInventoryItem = async (req, res) => {
-    const connection = await pool.getConnection();
+exports.getInventoryItems = getInventoryItems;
+const createInventoryItem = async (req, res) => {
+    const connection = await db_1.default.getConnection();
     try {
         await connection.beginTransaction();
         const user = req.user;
@@ -58,29 +98,30 @@ export const createInventoryItem = async (req, res) => {
             }
         }
         await connection.commit();
-        await logAudit(req.user.admin_id, 'CREATE_INVENTORY_ITEM', 'inventory_items', itemId, null, req.body, req);
-        return successResponse(res, { inventory_item_id: itemId }, 'Inventory item created successfully', 201);
+        await (0, audit_1.logAudit)(req.user.admin_id, 'CREATE_INVENTORY_ITEM', 'inventory_items', itemId, null, req.body, req);
+        return (0, response_1.successResponse)(res, { inventory_item_id: itemId }, 'Inventory item created successfully', 201);
     }
     catch (error) {
         await connection.rollback();
         if (error.code === 'ER_DUP_ENTRY') {
-            return errorResponse(res, 'SKU already exists', 400);
+            return (0, response_1.errorResponse)(res, 'SKU already exists', 400);
         }
-        return errorResponse(res, 'Failed to create inventory item', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to create inventory item', 500, error);
     }
     finally {
         connection.release();
     }
 };
-export const updateInventoryItem = async (req, res) => {
-    const connection = await pool.getConnection();
+exports.createInventoryItem = createInventoryItem;
+const updateInventoryItem = async (req, res) => {
+    const connection = await db_1.default.getConnection();
     try {
         await connection.beginTransaction();
         const { id } = req.params;
         const { name_en, name_ar, sku, category_id, min_stock_level, unit_en, unit_ar, cost_price, sort_order, packages } = req.body;
         const [oldRows] = await connection.execute('SELECT * FROM inventory_items WHERE inventory_item_id = ?', [id]);
         if (oldRows.length === 0) {
-            return errorResponse(res, 'Inventory item not found', 404);
+            return (0, response_1.errorResponse)(res, 'Inventory item not found', 404);
         }
         const oldData = oldRows[0];
         await connection.execute(`UPDATE inventory_items 
@@ -120,51 +161,54 @@ export const updateInventoryItem = async (req, res) => {
             }
         }
         await connection.commit();
-        await logAudit(req.user.admin_id, 'UPDATE_INVENTORY_ITEM', 'inventory_items', parseInt(id), oldData, req.body, req);
-        return successResponse(res, null, 'Inventory item updated successfully');
+        await (0, audit_1.logAudit)(req.user.admin_id, 'UPDATE_INVENTORY_ITEM', 'inventory_items', parseInt(id), oldData, req.body, req);
+        return (0, response_1.successResponse)(res, null, 'Inventory item updated successfully');
     }
     catch (error) {
         await connection.rollback();
         console.error('Update Inventory Error:', error);
-        return errorResponse(res, 'Failed to update inventory item', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to update inventory item', 500, error);
     }
     finally {
         connection.release();
     }
 };
-export const deleteInventoryItem = async (req, res) => {
+exports.updateInventoryItem = updateInventoryItem;
+const deleteInventoryItem = async (req, res) => {
     try {
         const { id } = req.params;
-        await pool.execute('UPDATE inventory_items SET deleted_at = CURRENT_TIMESTAMP WHERE inventory_item_id = ?', [id]);
-        await logAudit(req.user.admin_id, 'DELETE_INVENTORY_ITEM', 'inventory_items', parseInt(id), { status: 'active' }, { status: 'deleted' }, req);
-        return successResponse(res, null, 'Inventory item deleted successfully');
+        await db_1.default.execute('UPDATE inventory_items SET deleted_at = CURRENT_TIMESTAMP WHERE inventory_item_id = ?', [id]);
+        await (0, audit_1.logAudit)(req.user.admin_id, 'DELETE_INVENTORY_ITEM', 'inventory_items', parseInt(id), { status: 'active' }, { status: 'deleted' }, req);
+        return (0, response_1.successResponse)(res, null, 'Inventory item deleted successfully');
     }
     catch (error) {
-        return errorResponse(res, 'Failed to delete inventory item', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to delete inventory item', 500, error);
     }
 };
-export const adjustStock = async (req, res) => {
+exports.deleteInventoryItem = deleteInventoryItem;
+const adjustStock = async (req, res) => {
     try {
         const { id } = req.params;
         const { adjustment_type, quantity, reason } = req.body; // type: 'add' or 'subtract'
-        const [rows] = await pool.execute('SELECT current_stock FROM inventory_items WHERE inventory_item_id = ?', [id]);
+        const [rows] = await db_1.default.execute('SELECT current_stock FROM inventory_items WHERE inventory_item_id = ?', [id]);
         if (rows.length === 0) {
-            return errorResponse(res, 'Inventory item not found', 404);
+            return (0, response_1.errorResponse)(res, 'Inventory item not found', 404);
         }
         const currentStock = parseFloat(rows[0].current_stock);
         const adjustQty = parseFloat(quantity);
         const newStock = adjustment_type === 'add' ? currentStock + adjustQty : currentStock - adjustQty;
-        await pool.execute('UPDATE inventory_items SET current_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE inventory_item_id = ?', [newStock, id]);
+        await db_1.default.execute('UPDATE inventory_items SET current_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE inventory_item_id = ?', [newStock, id]);
         // 🔔 REAL-TIME STOCK AUDIT
-        import('../utils/notifications.js').then(m => m.checkAndNotifyLowStock(Number(id)));
-        await logAudit(req.user.admin_id, 'STOCK_ADJUSTMENT', 'inventory_items', parseInt(id), { old_stock: currentStock }, { new_stock: newStock, type: adjustment_type, reason }, req);
-        return successResponse(res, { new_stock: newStock }, 'Stock adjusted successfully');
+        Promise.resolve().then(() => __importStar(require('../utils/notifications.js'))).then(m => m.checkAndNotifyLowStock(Number(id)));
+        await (0, audit_1.logAudit)(req.user.admin_id, 'STOCK_ADJUSTMENT', 'inventory_items', parseInt(id), { old_stock: currentStock }, { new_stock: newStock, type: adjustment_type, reason }, req);
+        return (0, response_1.successResponse)(res, { new_stock: newStock }, 'Stock adjusted successfully');
     }
     catch (error) {
-        return errorResponse(res, 'Failed to adjust stock', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to adjust stock', 500, error);
     }
 };
-export const getInventoryPackages = async (req, res) => {
+exports.adjustStock = adjustStock;
+const getInventoryPackages = async (req, res) => {
     try {
         const { inventory_item_id } = req.query;
         let query = 'SELECT * FROM inventory_item_packages WHERE deleted_at IS NULL';
@@ -173,10 +217,11 @@ export const getInventoryPackages = async (req, res) => {
             query += ' AND inventory_item_id = ?';
             params.push(inventory_item_id);
         }
-        const [packages] = await pool.execute(query, params);
-        return successResponse(res, packages);
+        const [packages] = await db_1.default.execute(query, params);
+        return (0, response_1.successResponse)(res, packages);
     }
     catch (error) {
-        return errorResponse(res, 'Failed to fetch inventory packages', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to fetch inventory packages', 500, error);
     }
 };
+exports.getInventoryPackages = getInventoryPackages;

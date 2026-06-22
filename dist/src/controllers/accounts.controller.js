@@ -1,8 +1,14 @@
-import pool from '../config/db';
-import { successResponse, errorResponse } from '../utils/response';
-export const getTransactions = async (req, res) => {
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.getFinancialSummary = exports.getTransactions = void 0;
+const db_1 = __importDefault(require("../config/db"));
+const response_1 = require("../utils/response");
+const getTransactions = async (req, res) => {
     try {
-        const [transactions] = await pool.execute(`
+        const [transactions] = await db_1.default.execute(`
       (SELECT 
         s.sale_id as id, 
         'Direct Sales' as category, 
@@ -46,20 +52,21 @@ export const getTransactions = async (req, res) => {
       ORDER BY date DESC 
       LIMIT 100
     `);
-        return successResponse(res, transactions);
+        return (0, response_1.successResponse)(res, transactions);
     }
     catch (error) {
-        return errorResponse(res, 'Failed to fetch transaction history', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to fetch transaction history', 500, error);
     }
 };
-export const getFinancialSummary = async (req, res) => {
+exports.getTransactions = getTransactions;
+const getFinancialSummary = async (req, res) => {
     try {
-        const [income] = await pool.execute('SELECT SUM(total_amount) as total FROM sales_orders');
-        const [expense] = await pool.execute('SELECT SUM(final_amount) as total FROM purchase_orders');
-        const [returns] = await pool.execute('SELECT SUM(total_credit_amount) as total FROM sales_returns');
+        const [income] = await db_1.default.execute('SELECT SUM(total_amount) as total FROM sales_orders');
+        const [expense] = await db_1.default.execute('SELECT SUM(final_amount) as total FROM purchase_orders');
+        const [returns] = await db_1.default.execute('SELECT SUM(total_credit_amount) as total FROM sales_returns');
         const totalIncome = Number(income[0]?.total || 0);
         const totalExpense = Number(expense[0]?.total || 0) + Number(returns[0]?.total || 0);
-        return successResponse(res, {
+        return (0, response_1.successResponse)(res, {
             totalIncome,
             totalExpense,
             netProfit: totalIncome - totalExpense,
@@ -67,6 +74,7 @@ export const getFinancialSummary = async (req, res) => {
         });
     }
     catch (error) {
-        return errorResponse(res, 'Summary calculation failed', 500, error);
+        return (0, response_1.errorResponse)(res, 'Summary calculation failed', 500, error);
     }
 };
+exports.getFinancialSummary = getFinancialSummary;

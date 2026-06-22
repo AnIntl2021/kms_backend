@@ -1,7 +1,13 @@
-import { GoogleGenAI, Type } from '@google/genai';
-import pool from '../config/db';
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.chatWithAI = void 0;
+const genai_1 = require("@google/genai");
+const db_1 = __importDefault(require("../config/db"));
 // Ensure you have GEMINI_API_KEY in your .env
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+const ai = new genai_1.GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 // 1. Define the tools
 const getMenuCatalogDeclaration = {
     name: 'getMenuCatalog',
@@ -11,14 +17,14 @@ const getSalesSummaryDeclaration = {
     name: 'getSalesSummary',
     description: 'Get the summary of total sales, total revenue, and loss rate for a given date range. Use this for sales forecasting or answering sales inquiries.',
     parameters: {
-        type: Type.OBJECT,
+        type: genai_1.Type.OBJECT,
         properties: {
             period: {
-                type: Type.STRING,
+                type: genai_1.Type.STRING,
                 description: 'The period to get sales for. Can be "today", "this_month", "all_time", or a specific month name like "May".',
             },
             client_name: {
-                type: Type.STRING,
+                type: genai_1.Type.STRING,
                 description: 'Optional. The specific client or customer name to get sales for (e.g. "canteen", "john").',
             }
         },
@@ -29,14 +35,14 @@ const getBranchPerformanceDeclaration = {
     name: 'getBranchPerformance',
     description: 'Get the sales performance (total revenue and orders) grouped by branches. Use this to answer which branch is performing best or worst.',
     parameters: {
-        type: Type.OBJECT,
+        type: genai_1.Type.OBJECT,
         properties: {},
     },
 };
 // Tool implementations
 const getMenuCatalog = async () => {
     try {
-        const [rows] = await pool.query('SELECT name_en, name_ar, price, category FROM menu_items WHERE status = "active" LIMIT 50');
+        const [rows] = await db_1.default.query('SELECT name_en, name_ar, price, category FROM menu_items WHERE status = "active" LIMIT 50');
         return rows;
     }
     catch (e) {
@@ -65,7 +71,7 @@ const getSalesSummary = async (args) => {
             query += ` AND customer_name LIKE ?`;
             queryParams.push(`%${args.client_name}%`);
         }
-        const [salesRows] = await pool.query(query, queryParams);
+        const [salesRows] = await db_1.default.query(query, queryParams);
         // Return a mock loss rate for now or query actual wastage if needed
         return {
             total_orders: salesRows[0].total_orders || 0,
@@ -88,7 +94,7 @@ const getBranchPerformance = async () => {
             GROUP BY s.branch_id, b.name_en
             ORDER BY total_revenue DESC
         `;
-        const [rows] = await pool.query(query);
+        const [rows] = await db_1.default.query(query);
         return rows;
     }
     catch (e) {
@@ -101,7 +107,7 @@ const functions = {
     getSalesSummary,
     getBranchPerformance,
 };
-export const chatWithAI = async (req, res) => {
+const chatWithAI = async (req, res) => {
     try {
         if (!process.env.GEMINI_API_KEY) {
             return res.status(500).json({ success: false, message: 'GEMINI_API_KEY is not configured in the backend.' });
@@ -117,7 +123,7 @@ export const chatWithAI = async (req, res) => {
         }));
         const userMessage = messages[messages.length - 1].text;
         // Fetch company name and currency code from system settings dynamically
-        const [settingsRows] = await pool.execute("SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('company_name', 'currency_code')");
+        const [settingsRows] = await db_1.default.execute("SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('company_name', 'currency_code')");
         const systemConfigs = (settingsRows || []).reduce((acc, curr) => {
             acc[curr.setting_key] = curr.setting_value;
             return acc;
@@ -163,3 +169,4 @@ export const chatWithAI = async (req, res) => {
         return res.status(500).json({ success: false, message: 'AI processing failed', error: error.message });
     }
 };
+exports.chatWithAI = chatWithAI;

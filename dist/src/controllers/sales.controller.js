@@ -1,6 +1,12 @@
-import pool from '../config/db.js';
-import { successResponse, errorResponse } from '../utils/response.js';
-export const getSales = async (req, res) => {
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.returnOrder = exports.deleteSale = exports.updateSaleStatus = exports.updatePaymentStatus = exports.createSale = exports.getSaleById = exports.getSales = void 0;
+const db_js_1 = __importDefault(require("../config/db.js"));
+const response_js_1 = require("../utils/response.js");
+const getSales = async (req, res) => {
     try {
         // 🤖 AUTO-SETTLEMENT ORACLE: Temporarily disabled to allow manual overrides during testing.
         /*
@@ -42,10 +48,10 @@ export const getSales = async (req, res) => {
             params.push(user.branch_id);
         }
         query += ' ORDER BY s.created_at DESC, s.sale_id DESC';
-        const [rows] = await pool.execute(query, params);
+        const [rows] = await db_js_1.default.execute(query, params);
         if (rows.length > 0) {
             const saleIds = rows.map((r) => r.sale_id);
-            const [items] = await pool.execute(`
+            const [items] = await db_js_1.default.execute(`
         SELECT soi.sale_id, soi.menu_item_id, mi.name_en, soi.quantity,
           (
              SELECT COALESCE(SUM(sri.quantity), 0) 
@@ -61,16 +67,17 @@ export const getSales = async (req, res) => {
                 row.items_json = JSON.stringify(items.filter((i) => i.sale_id === row.sale_id));
             });
         }
-        return successResponse(res, rows);
+        return (0, response_js_1.successResponse)(res, rows);
     }
     catch (error) {
-        return errorResponse(res, 'Failed to fetch sales', 500, error);
+        return (0, response_js_1.errorResponse)(res, 'Failed to fetch sales', 500, error);
     }
 };
-export const getSaleById = async (req, res) => {
+exports.getSales = getSales;
+const getSaleById = async (req, res) => {
     try {
         const { id } = req.params;
-        const [orders] = await pool.execute(`
+        const [orders] = await db_js_1.default.execute(`
       SELECT s.*, 
              DATE_FORMAT(s.created_at, '%Y-%m-%d') as order_date,
              DATE_FORMAT(s.created_at, '%Y-%m-%d') as dispatch_date,
@@ -85,22 +92,23 @@ export const getSaleById = async (req, res) => {
       WHERE s.sale_id = ?
     `, [id]);
         if (orders.length === 0)
-            return errorResponse(res, 'Order not found', 404);
-        const [items] = await pool.execute(`
+            return (0, response_js_1.errorResponse)(res, 'Order not found', 404);
+        const [items] = await db_js_1.default.execute(`
       SELECT soi.*, mi.name_en, mi.name_ar
       FROM sales_order_items soi
       JOIN menu_items mi ON soi.menu_item_id = mi.menu_item_id
       WHERE soi.sale_id = ?
     `, [id]);
         const orderData = { ...orders[0], items };
-        return successResponse(res, orderData);
+        return (0, response_js_1.successResponse)(res, orderData);
     }
     catch (error) {
-        return errorResponse(res, 'Failed to fetch order details', 500, error);
+        return (0, response_js_1.errorResponse)(res, 'Failed to fetch order details', 500, error);
     }
 };
-export const createSale = async (req, res) => {
-    const connection = await pool.getConnection();
+exports.getSaleById = getSaleById;
+const createSale = async (req, res) => {
+    const connection = await db_js_1.default.getConnection();
     try {
         const { branch_id, customer_name, client_phone, client_address, notes, items, total_amount, order_type, payment_method, payment_status, counter_id } = req.body;
         const admin_id = req.user?.admin_id || 1;
@@ -161,51 +169,54 @@ export const createSale = async (req, res) => {
         }
         await connection.commit();
         console.log('✅ Sale created successfully:', sale_id);
-        return successResponse(res, { sale_id, order_number }, 'Sale recorded successfully');
+        return (0, response_js_1.successResponse)(res, { sale_id, order_number }, 'Sale recorded successfully');
     }
     catch (error) {
         if (connection)
             await connection.rollback();
         console.error('❌ CREATE SALE ERROR:', error);
-        return errorResponse(res, 'Failed to create sale: ' + (error instanceof Error ? error.message : String(error)), 500, error);
+        return (0, response_js_1.errorResponse)(res, 'Failed to create sale: ' + (error instanceof Error ? error.message : String(error)), 500, error);
     }
     finally {
         if (connection)
             connection.release();
     }
 };
-export const updatePaymentStatus = async (req, res) => {
+exports.createSale = createSale;
+const updatePaymentStatus = async (req, res) => {
     try {
         const { id } = req.params;
         const { payment_status } = req.body;
-        await pool.execute('UPDATE sales_orders SET payment_status = ? WHERE sale_id = ?', [payment_status, id]);
-        return successResponse(res, null, 'Payment status updated');
+        await db_js_1.default.execute('UPDATE sales_orders SET payment_status = ? WHERE sale_id = ?', [payment_status, id]);
+        return (0, response_js_1.successResponse)(res, null, 'Payment status updated');
     }
     catch (error) {
-        return errorResponse(res, 'Update failed', 500, error);
+        return (0, response_js_1.errorResponse)(res, 'Update failed', 500, error);
     }
 };
-export const updateSaleStatus = async (req, res) => {
+exports.updatePaymentStatus = updatePaymentStatus;
+const updateSaleStatus = async (req, res) => {
     try {
         const { id } = req.params;
         const { dispatch_status } = req.body;
         // 📢 NOTIFICATION TRIGGER
-        const [order] = await pool.execute('SELECT order_number, customer_name FROM sales_orders WHERE sale_id = ?', [id]);
+        const [order] = await db_js_1.default.execute('SELECT order_number, customer_name FROM sales_orders WHERE sale_id = ?', [id]);
         // 🛡️ ACTUAL DATABASE UPDATE (THE MISSING LINK)
-        await pool.execute('UPDATE sales_orders SET dispatch_status = ? WHERE sale_id = ?', [dispatch_status, id]);
+        await db_js_1.default.execute('UPDATE sales_orders SET dispatch_status = ? WHERE sale_id = ?', [dispatch_status, id]);
         if (order.length > 0) {
             const msg = `⚡ Order ${order[0].order_number} (${order[0].customer_name}) status updated to: ${dispatch_status.toUpperCase()}`;
             const type = dispatch_status === 'delivered' ? 'success' : (dispatch_status === 'dispatched' ? 'info' : 'warning');
-            await pool.execute('INSERT INTO notifications (message, type) VALUES (?, ?)', [msg, type]);
+            await db_js_1.default.execute('INSERT INTO notifications (message, type) VALUES (?, ?)', [msg, type]);
         }
-        return successResponse(res, null, 'Status updated successfully');
+        return (0, response_js_1.successResponse)(res, null, 'Status updated successfully');
     }
     catch (error) {
-        return errorResponse(res, 'Update failed', 500, error);
+        return (0, response_js_1.errorResponse)(res, 'Update failed', 500, error);
     }
 };
-export const deleteSale = async (req, res) => {
-    const connection = await pool.getConnection();
+exports.updateSaleStatus = updateSaleStatus;
+const deleteSale = async (req, res) => {
+    const connection = await db_js_1.default.getConnection();
     try {
         await connection.beginTransaction();
         const { id } = req.params;
@@ -243,20 +254,21 @@ export const deleteSale = async (req, res) => {
         // 3. Mark as deleted
         await connection.execute('UPDATE sales_orders SET deleted_at = CURRENT_TIMESTAMP WHERE sale_id = ?', [id]);
         await connection.commit();
-        return successResponse(res, null, 'Order deleted and stock reverted successfully');
+        return (0, response_js_1.successResponse)(res, null, 'Order deleted and stock reverted successfully');
     }
     catch (error) {
         if (connection)
             await connection.rollback();
-        return errorResponse(res, 'Failed to delete order and revert stock: ' + error.message, 500, error);
+        return (0, response_js_1.errorResponse)(res, 'Failed to delete order and revert stock: ' + error.message, 500, error);
     }
     finally {
         if (connection)
             connection.release();
     }
 };
-export const returnOrder = async (req, res) => {
-    const connection = await pool.getConnection();
+exports.deleteSale = deleteSale;
+const returnOrder = async (req, res) => {
+    const connection = await db_js_1.default.getConnection();
     try {
         const { id } = req.params;
         const saleId = parseInt(id);
@@ -299,16 +311,17 @@ export const returnOrder = async (req, res) => {
         await connection.execute('UPDATE sales_orders SET dispatch_status = ?, payment_status = ? WHERE sale_id = ?', ['cancelled', 'failed', saleId]);
         await connection.commit();
         console.log('✅ RETURN SUCCESSFUL:', saleId);
-        return successResponse(res, null, 'Order returned and stock restored successfully');
+        return (0, response_js_1.successResponse)(res, null, 'Order returned and stock restored successfully');
     }
     catch (error) {
         if (connection)
             await connection.rollback();
         console.error('❌ RETURN ERROR:', error);
-        return errorResponse(res, 'Failed to process return', 500, error);
+        return (0, response_js_1.errorResponse)(res, 'Failed to process return', 500, error);
     }
     finally {
         if (connection)
             connection.release();
     }
 };
+exports.returnOrder = returnOrder;

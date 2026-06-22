@@ -1,21 +1,28 @@
-import { successResponse, errorResponse } from '../utils/response';
-import pool from '../config/db';
-export const getVendors = async (req, res) => {
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.deleteVendor = exports.updateVendor = exports.createVendor = exports.getVendors = void 0;
+const response_1 = require("../utils/response");
+const db_1 = __importDefault(require("../config/db"));
+const getVendors = async (req, res) => {
     try {
-        const [vendors] = await pool.execute('SELECT * FROM vendors WHERE deleted_at IS NULL ORDER BY name_en ASC');
+        const [vendors] = await db_1.default.execute('SELECT * FROM vendors WHERE deleted_at IS NULL ORDER BY name_en ASC');
         // 🛡️ BRANCH SEGREGATION ORACLE (Attach branches to each partner)
         for (const vendor of vendors) {
-            const [branches] = await pool.execute('SELECT * FROM partner_branches WHERE partner_id = ? AND status = "active"', [vendor.vendor_id]);
+            const [branches] = await db_1.default.execute('SELECT * FROM partner_branches WHERE partner_id = ? AND status = "active"', [vendor.vendor_id]);
             vendor.branches = branches;
         }
-        return successResponse(res, vendors);
+        return (0, response_1.successResponse)(res, vendors);
     }
     catch (error) {
-        return errorResponse(res, 'Failed to fetch partners', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to fetch partners', 500, error);
     }
 };
-export const createVendor = async (req, res) => {
-    const connection = await pool.getConnection();
+exports.getVendors = getVendors;
+const createVendor = async (req, res) => {
+    const connection = await db_1.default.getConnection();
     try {
         await connection.beginTransaction();
         const { name_en, name_ar, contact_person, phone, email, address, type, status, default_discount, branches } = req.body;
@@ -29,19 +36,20 @@ export const createVendor = async (req, res) => {
             }
         }
         await connection.commit();
-        return successResponse(res, { vendor_id: partnerId }, 'Partner & Branches registered successfully', 201);
+        return (0, response_1.successResponse)(res, { vendor_id: partnerId }, 'Partner & Branches registered successfully', 201);
     }
     catch (error) {
         await connection.rollback();
         console.error('Create Vendor Error:', error);
-        return errorResponse(res, 'Failed to register partner network', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to register partner network', 500, error);
     }
     finally {
         connection.release();
     }
 };
-export const updateVendor = async (req, res) => {
-    const connection = await pool.getConnection();
+exports.createVendor = createVendor;
+const updateVendor = async (req, res) => {
+    const connection = await db_1.default.getConnection();
     try {
         await connection.beginTransaction();
         const { id } = req.params;
@@ -70,24 +78,26 @@ export const updateVendor = async (req, res) => {
             }
         }
         await connection.commit();
-        return successResponse(res, null, 'Partner project updated successfully');
+        return (0, response_1.successResponse)(res, null, 'Partner project updated successfully');
     }
     catch (error) {
         await connection.rollback();
         console.error('Update Vendor Error:', error);
-        return errorResponse(res, 'Failed to update distribution network', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to update distribution network', 500, error);
     }
     finally {
         connection.release();
     }
 };
-export const deleteVendor = async (req, res) => {
+exports.updateVendor = updateVendor;
+const deleteVendor = async (req, res) => {
     try {
         const { id } = req.params;
-        await pool.execute('UPDATE vendors SET deleted_at = CURRENT_TIMESTAMP WHERE vendor_id = ?', [id]);
-        return successResponse(res, null, 'Partner removed successfully');
+        await db_1.default.execute('UPDATE vendors SET deleted_at = CURRENT_TIMESTAMP WHERE vendor_id = ?', [id]);
+        return (0, response_1.successResponse)(res, null, 'Partner removed successfully');
     }
     catch (error) {
-        return errorResponse(res, 'Failed to remove partner', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to remove partner', 500, error);
     }
 };
+exports.deleteVendor = deleteVendor;

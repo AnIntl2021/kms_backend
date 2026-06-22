@@ -1,8 +1,10 @@
-import { Router } from 'express';
-import { getExpenses, createExpense, deleteExpense } from '../controllers/expense.controller';
-import { authMiddleware } from '../middleware/auth.middleware';
-const router = Router();
-router.get('/', authMiddleware, getExpenses);
-router.post('/', authMiddleware, createExpense);
-router.delete('/:id', authMiddleware, deleteExpense);
-export default router;
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const expense_controller_1 = require("../controllers/expense.controller");
+const auth_middleware_1 = require("../middleware/auth.middleware");
+const router = (0, express_1.Router)();
+router.get('/', auth_middleware_1.authMiddleware, expense_controller_1.getExpenses);
+router.post('/', auth_middleware_1.authMiddleware, expense_controller_1.createExpense);
+router.delete('/:id', auth_middleware_1.authMiddleware, expense_controller_1.deleteExpense);
+exports.default = router;

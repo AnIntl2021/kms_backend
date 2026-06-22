@@ -1,7 +1,13 @@
-import { successResponse, errorResponse } from '../utils/response';
-import pool from '../config/db';
-import { logAudit } from '../utils/audit';
-export const getProducts = async (req, res) => {
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.deleteProduct = exports.updateProduct = exports.createProduct = exports.getProducts = void 0;
+const response_1 = require("../utils/response");
+const db_1 = __importDefault(require("../config/db"));
+const audit_1 = require("../utils/audit");
+const getProducts = async (req, res) => {
     try {
         const { category_id, sort = 'sort_order', order = 'ASC' } = req.query;
         let query = `
@@ -16,50 +22,54 @@ export const getProducts = async (req, res) => {
             params.push(category_id);
         }
         query += ` ORDER BY ${sort} ${order === 'DESC' ? 'DESC' : 'ASC'}`;
-        const [products] = await pool.execute(query, params);
-        return successResponse(res, products);
+        const [products] = await db_1.default.execute(query, params);
+        return (0, response_1.successResponse)(res, products);
     }
     catch (error) {
-        return errorResponse(res, 'Failed to fetch products', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to fetch products', 500, error);
     }
 };
-export const createProduct = async (req, res) => {
+exports.getProducts = getProducts;
+const createProduct = async (req, res) => {
     try {
         const { name_en, name_ar, category_id, base_price, sku, sort_order } = req.body;
-        const [result] = await pool.execute(`INSERT INTO products (name_en, name_ar, category_id, base_price, sku, sort_order) 
+        const [result] = await db_1.default.execute(`INSERT INTO products (name_en, name_ar, category_id, base_price, sku, sort_order) 
        VALUES (?, ?, ?, ?, ?, ?)`, [name_en, name_ar, category_id, base_price, sku, sort_order || 0]);
         const productId = result.insertId;
-        await logAudit(req.user.admin_id, 'CREATE_PRODUCT', 'products', productId, null, req.body, req);
-        return successResponse(res, { product_id: productId }, 'Product created successfully', 201);
+        await (0, audit_1.logAudit)(req.user.admin_id, 'CREATE_PRODUCT', 'products', productId, null, req.body, req);
+        return (0, response_1.successResponse)(res, { product_id: productId }, 'Product created successfully', 201);
     }
     catch (error) {
-        return errorResponse(res, 'Failed to create product', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to create product', 500, error);
     }
 };
-export const updateProduct = async (req, res) => {
+exports.createProduct = createProduct;
+const updateProduct = async (req, res) => {
     try {
         const { id } = req.params;
         const { name_en, name_ar, base_price, sort_order } = req.body;
-        const [oldRows] = await pool.execute('SELECT * FROM products WHERE product_id = ?', [id]);
+        const [oldRows] = await db_1.default.execute('SELECT * FROM products WHERE product_id = ?', [id]);
         const oldData = oldRows[0];
-        await pool.execute(`UPDATE products 
+        await db_1.default.execute(`UPDATE products 
        SET name_en = ?, name_ar = ?, base_price = ?, sort_order = ?, updated_at = CURRENT_TIMESTAMP 
        WHERE product_id = ?`, [name_en, name_ar, base_price, sort_order, id]);
-        await logAudit(req.user.admin_id, 'UPDATE_PRODUCT', 'products', parseInt(id), oldData, req.body, req);
-        return successResponse(res, null, 'Product updated successfully');
+        await (0, audit_1.logAudit)(req.user.admin_id, 'UPDATE_PRODUCT', 'products', parseInt(id), oldData, req.body, req);
+        return (0, response_1.successResponse)(res, null, 'Product updated successfully');
     }
     catch (error) {
-        return errorResponse(res, 'Failed to update product', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to update product', 500, error);
     }
 };
-export const deleteProduct = async (req, res) => {
+exports.updateProduct = updateProduct;
+const deleteProduct = async (req, res) => {
     try {
         const { id } = req.params;
-        await pool.execute('UPDATE products SET deleted_at = CURRENT_TIMESTAMP WHERE product_id = ?', [id]);
-        await logAudit(req.user.admin_id, 'DELETE_PRODUCT', 'products', parseInt(id), { status: 'active' }, { status: 'deleted' }, req);
-        return successResponse(res, null, 'Product deleted successfully');
+        await db_1.default.execute('UPDATE products SET deleted_at = CURRENT_TIMESTAMP WHERE product_id = ?', [id]);
+        await (0, audit_1.logAudit)(req.user.admin_id, 'DELETE_PRODUCT', 'products', parseInt(id), { status: 'active' }, { status: 'deleted' }, req);
+        return (0, response_1.successResponse)(res, null, 'Product deleted successfully');
     }
     catch (error) {
-        return errorResponse(res, 'Failed to delete product', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to delete product', 500, error);
     }
 };
+exports.deleteProduct = deleteProduct;

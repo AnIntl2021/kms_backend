@@ -1,5 +1,11 @@
-import pool from '../config/db.js';
-import { successResponse, errorResponse } from '../utils/response.js';
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.getProductionHealth = exports.getStoreForecasting = void 0;
+const db_js_1 = __importDefault(require("../config/db.js"));
+const response_js_1 = require("../utils/response.js");
 const getReportScope = (req) => {
     const user = req.user;
     const userBrandId = user?.brand_id || null;
@@ -12,11 +18,11 @@ const getReportScope = (req) => {
         branchId: userBranchId ? userBranchId : queryBranchId
     };
 };
-export const getStoreForecasting = async (req, res) => {
+const getStoreForecasting = async (req, res) => {
     try {
         const { brandId, branchId } = getReportScope(req);
         // Determine business type from settings
-        const [settingsRows] = await pool.execute("SELECT setting_value FROM system_settings WHERE setting_key = 'business_type'");
+        const [settingsRows] = await db_js_1.default.execute("SELECT setting_value FROM system_settings WHERE setting_key = 'business_type'");
         const businessType = (settingsRows && settingsRows.length > 0) ? settingsRows[0].setting_value : 'restaurant_pos';
         if (businessType === 'restaurant_pos') {
             // 1. Get menu items sold in the last 14 days to compute velocity
@@ -44,7 +50,7 @@ export const getStoreForecasting = async (req, res) => {
                 salesParams.push(brandId);
             }
             salesQuery += ` GROUP BY mi.menu_item_id ORDER BY units_sold DESC`;
-            const [menuSales] = await pool.execute(salesQuery, salesParams);
+            const [menuSales] = await db_js_1.default.execute(salesQuery, salesParams);
             let menuItems = menuSales;
             if (menuItems.length === 0) {
                 // Fallback: Fetch some default menu items if there are no recent sales
@@ -59,11 +65,11 @@ export const getStoreForecasting = async (req, res) => {
                     fallbackParams.push(brandId);
                 }
                 fallbackQuery += ` LIMIT 10`;
-                const [allMenu] = await pool.execute(fallbackQuery, fallbackParams);
+                const [allMenu] = await db_js_1.default.execute(fallbackQuery, fallbackParams);
                 menuItems = allMenu;
             }
             if (menuItems.length === 0) {
-                return successResponse(res, { forecasting: [] });
+                return (0, response_js_1.successResponse)(res, { forecasting: [] });
             }
             const menuItemIds = menuItems.map((m) => m.menu_item_id).join(',');
             // 2. Fetch recipe ingredients mapped to these menu items
@@ -89,7 +95,7 @@ export const getStoreForecasting = async (req, res) => {
                 ingQuery += ` AND ii.brand_id = ?`;
                 ingParams.push(brandId);
             }
-            const [ingredients] = await pool.execute(ingQuery, ingParams);
+            const [ingredients] = await db_js_1.default.execute(ingQuery, ingParams);
             // 3. Fallback: If no ingredients mapped, return menu items directly
             if (ingredients.length === 0) {
                 const forecasting = menuItems.map((m) => {
@@ -115,7 +121,7 @@ export const getStoreForecasting = async (req, res) => {
                         priority: m.units_sold > 0 ? 'Stable' : 'Critical'
                     };
                 });
-                return successResponse(res, { forecasting });
+                return (0, response_js_1.successResponse)(res, { forecasting });
             }
             // 4. Calculate predicted weekly demand grouped by ingredient
             const ingredientMap = new Map();
@@ -182,7 +188,7 @@ export const getStoreForecasting = async (req, res) => {
                     priority
                 };
             });
-            return successResponse(res, { forecasting });
+            return (0, response_js_1.successResponse)(res, { forecasting });
         }
         else {
             // ----------------------------------------------------
@@ -242,7 +248,7 @@ export const getStoreForecasting = async (req, res) => {
                 statsParams.push(brandId);
             }
             statsQuery += ` GROUP BY v.vendor_id, pb.branch_id`;
-            const [stats] = await pool.execute(statsQuery, statsParams);
+            const [stats] = await db_js_1.default.execute(statsQuery, statsParams);
             const forecasting = stats.map((store) => {
                 const wasteUnits = parseFloat(store.recent_wastage_units || '0');
                 const salesKwd = parseFloat(store.recent_sales || '0');
@@ -297,19 +303,20 @@ export const getStoreForecasting = async (req, res) => {
                     priority
                 };
             });
-            return successResponse(res, { forecasting });
+            return (0, response_js_1.successResponse)(res, { forecasting });
         }
     }
     catch (error) {
         console.error('Forecasting Error:', error);
-        return errorResponse(res, 'Failed to generate financial analytics', 500, error);
+        return (0, response_js_1.errorResponse)(res, 'Failed to generate financial analytics', 500, error);
     }
 };
-export const getProductionHealth = async (req, res) => {
+exports.getStoreForecasting = getStoreForecasting;
+const getProductionHealth = async (req, res) => {
     try {
         const { brandId, branchId } = getReportScope(req);
         // Determine business type from settings
-        const [settingsRows] = await pool.execute("SELECT setting_value FROM system_settings WHERE setting_key = 'business_type'");
+        const [settingsRows] = await db_js_1.default.execute("SELECT setting_value FROM system_settings WHERE setting_key = 'business_type'");
         const businessType = (settingsRows && settingsRows.length > 0) ? settingsRows[0].setting_value : 'restaurant_pos';
         let revenueQuery = `
       SELECT SUM(final_amount) 
@@ -376,7 +383,7 @@ export const getProductionHealth = async (req, res) => {
             wasteLossQuery += ` AND (w.brand_id = ${Number(brandId)} OR a.brand_id = ${Number(brandId)})`;
             returnsQuery += ` AND r.brand_id = ${Number(brandId)}`;
         }
-        const [hp] = await pool.execute(`
+        const [hp] = await db_js_1.default.execute(`
       SELECT 
         (${prodQuery}) as total_produced,
         (${wasteQuery}) as total_wasted,
@@ -393,13 +400,14 @@ export const getProductionHealth = async (req, res) => {
     `);
         const data = hp[0];
         const total_profit_7d = (parseFloat(data.total_revenue_7d || '0') - parseFloat(data.total_production_cost_7d || '0') - parseFloat(data.total_returns_7d || '0'));
-        return successResponse(res, {
+        return (0, response_js_1.successResponse)(res, {
             ...data,
             total_profit_7d
         });
     }
     catch (error) {
         console.error('Health Error:', error);
-        return errorResponse(res, 'Failed to fetch production health', 500, error);
+        return (0, response_js_1.errorResponse)(res, 'Failed to fetch production health', 500, error);
     }
 };
+exports.getProductionHealth = getProductionHealth;

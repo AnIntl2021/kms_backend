@@ -1,6 +1,12 @@
-import { successResponse, errorResponse } from '../utils/response';
-import pool from '../config/db';
-export const getCategories = async (req, res) => {
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.deleteCategory = exports.updateCategory = exports.createCategory = exports.getCategories = void 0;
+const response_1 = require("../utils/response");
+const db_1 = __importDefault(require("../config/db"));
+const getCategories = async (req, res) => {
     try {
         const { parent_only } = req.query;
         let query = 'SELECT * FROM categories WHERE deleted_at IS NULL';
@@ -9,42 +15,46 @@ export const getCategories = async (req, res) => {
             query += ' AND parent_id IS NULL';
         }
         query += ' ORDER BY sort_order ASC, name_en ASC';
-        const [categories] = await pool.execute(query, params);
-        return successResponse(res, categories);
+        const [categories] = await db_1.default.execute(query, params);
+        return (0, response_1.successResponse)(res, categories);
     }
     catch (error) {
-        return errorResponse(res, 'Failed to fetch categories', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to fetch categories', 500, error);
     }
 };
-export const createCategory = async (req, res) => {
+exports.getCategories = getCategories;
+const createCategory = async (req, res) => {
     try {
         const { name_en, name_ar, sort_order, parent_id } = req.body;
-        const [result] = await pool.execute('INSERT INTO categories (name_en, name_ar, sort_order, parent_id) VALUES (?, ?, ?, ?)', [name_en, name_ar, sort_order || 0, parent_id || null]);
-        return successResponse(res, { category_id: result.insertId }, 'Category created successfully', 201);
+        const [result] = await db_1.default.execute('INSERT INTO categories (name_en, name_ar, sort_order, parent_id) VALUES (?, ?, ?, ?)', [name_en, name_ar, sort_order || 0, parent_id || null]);
+        return (0, response_1.successResponse)(res, { category_id: result.insertId }, 'Category created successfully', 201);
     }
     catch (error) {
-        return errorResponse(res, 'Failed to create category', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to create category', 500, error);
     }
 };
-export const updateCategory = async (req, res) => {
+exports.createCategory = createCategory;
+const updateCategory = async (req, res) => {
     try {
         const { id } = req.params;
         const { name_en, name_ar, sort_order, parent_id } = req.body;
-        await pool.execute('UPDATE categories SET name_en = ?, name_ar = ?, sort_order = ?, parent_id = ?, updated_at = CURRENT_TIMESTAMP WHERE category_id = ?', [name_en, name_ar, sort_order, parent_id || null, id]);
-        return successResponse(res, null, 'Category updated successfully');
+        await db_1.default.execute('UPDATE categories SET name_en = ?, name_ar = ?, sort_order = ?, parent_id = ?, updated_at = CURRENT_TIMESTAMP WHERE category_id = ?', [name_en, name_ar, sort_order, parent_id || null, id]);
+        return (0, response_1.successResponse)(res, null, 'Category updated successfully');
     }
     catch (error) {
-        return errorResponse(res, 'Failed to update category', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to update category', 500, error);
     }
 };
-export const deleteCategory = async (req, res) => {
+exports.updateCategory = updateCategory;
+const deleteCategory = async (req, res) => {
     try {
         const { id } = req.params;
         // Soft delete
-        await pool.execute('UPDATE categories SET deleted_at = CURRENT_TIMESTAMP WHERE category_id = ?', [id]);
-        return successResponse(res, null, 'Category deleted successfully');
+        await db_1.default.execute('UPDATE categories SET deleted_at = CURRENT_TIMESTAMP WHERE category_id = ?', [id]);
+        return (0, response_1.successResponse)(res, null, 'Category deleted successfully');
     }
     catch (error) {
-        return errorResponse(res, 'Failed to delete category', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to delete category', 500, error);
     }
 };
+exports.deleteCategory = deleteCategory;

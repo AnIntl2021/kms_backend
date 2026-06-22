@@ -1,6 +1,12 @@
-import { successResponse, errorResponse } from '../utils/response';
-import pool from '../config/db';
-export const getMenuItems = async (req, res) => {
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.deleteMenuItem = exports.updateMenuItem = exports.createMenuItem = exports.getMenuItemDetails = exports.getMenuItems = void 0;
+const response_1 = require("../utils/response");
+const db_1 = __importDefault(require("../config/db"));
+const getMenuItems = async (req, res) => {
     try {
         const user = req.user;
         const branchId = user?.branch_id || req.query.branch_id || null;
@@ -39,21 +45,22 @@ export const getMenuItems = async (req, res) => {
             query += " AND COALESCE(bmi.status, mi.status) = 'available'";
         }
         query += ' ORDER BY mi.sort_order ASC, mi.name_en ASC';
-        const [items] = await pool.execute(query, params);
-        return successResponse(res, items);
+        const [items] = await db_1.default.execute(query, params);
+        return (0, response_1.successResponse)(res, items);
     }
     catch (error) {
         console.error('getMenuItems Error:', error);
-        return errorResponse(res, 'Failed to fetch menu items', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to fetch menu items', 500, error);
     }
 };
-export const getMenuItemDetails = async (req, res) => {
+exports.getMenuItems = getMenuItems;
+const getMenuItemDetails = async (req, res) => {
     try {
         const { id } = req.params;
-        const [items] = await pool.execute('SELECT * FROM menu_items WHERE menu_item_id = ?', [id]);
+        const [items] = await db_1.default.execute('SELECT * FROM menu_items WHERE menu_item_id = ?', [id]);
         if (items.length === 0)
-            return errorResponse(res, 'Item not found', 404);
-        const [ingredients] = await pool.execute(`
+            return (0, response_1.errorResponse)(res, 'Item not found', 404);
+        const [ingredients] = await db_1.default.execute(`
       SELECT 
         mii.*, 
         COALESCE(ii.name_en, smi.name_en) as name_en,
@@ -63,21 +70,22 @@ export const getMenuItemDetails = async (req, res) => {
       LEFT JOIN menu_items smi ON mii.sub_menu_item_id = smi.menu_item_id
       WHERE mii.menu_item_id = ?
     `, [id]);
-        const [branchCustomizations] = await pool.execute(`
+        const [branchCustomizations] = await db_1.default.execute(`
       SELECT bmi.*, b.name_en as branch_name 
       FROM branch_menu_items bmi 
       JOIN branches b ON bmi.branch_id = b.branch_id 
       WHERE bmi.menu_item_id = ?
     `, [id]);
-        return successResponse(res, { ...items[0], ingredients, branch_customizations: branchCustomizations });
+        return (0, response_1.successResponse)(res, { ...items[0], ingredients, branch_customizations: branchCustomizations });
     }
     catch (error) {
         console.error('getMenuItemDetails Error:', error);
-        return errorResponse(res, 'Failed to fetch menu details', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to fetch menu details', 500, error);
     }
 };
-export const createMenuItem = async (req, res) => {
-    const connection = await pool.getConnection();
+exports.getMenuItemDetails = getMenuItemDetails;
+const createMenuItem = async (req, res) => {
+    const connection = await db_1.default.getConnection();
     try {
         await connection.beginTransaction();
         const user = req.user;
@@ -154,19 +162,20 @@ export const createMenuItem = async (req, res) => {
             }
         }
         await connection.commit();
-        return successResponse(res, { menu_item_id }, 'Menu item created with recipe successfully!', 201);
+        return (0, response_1.successResponse)(res, { menu_item_id }, 'Menu item created with recipe successfully!', 201);
     }
     catch (error) {
         await connection.rollback();
         console.error('⛔ createMenuItem FAILURE:', error.message);
-        return errorResponse(res, `Database Error: ${error.message}`, 500, error);
+        return (0, response_1.errorResponse)(res, `Database Error: ${error.message}`, 500, error);
     }
     finally {
         connection.release();
     }
 };
-export const updateMenuItem = async (req, res) => {
-    const connection = await pool.getConnection();
+exports.createMenuItem = createMenuItem;
+const updateMenuItem = async (req, res) => {
+    const connection = await db_1.default.getConnection();
     try {
         const { id } = req.params;
         await connection.beginTransaction();
@@ -243,24 +252,26 @@ export const updateMenuItem = async (req, res) => {
             }
         }
         await connection.commit();
-        return successResponse(res, null, 'Menu item updated successfully');
+        return (0, response_1.successResponse)(res, null, 'Menu item updated successfully');
     }
     catch (error) {
         await connection.rollback();
-        return errorResponse(res, error.message || 'Failed to update menu item', 500, error);
+        return (0, response_1.errorResponse)(res, error.message || 'Failed to update menu item', 500, error);
     }
     finally {
         connection.release();
     }
 };
-export const deleteMenuItem = async (req, res) => {
+exports.updateMenuItem = updateMenuItem;
+const deleteMenuItem = async (req, res) => {
     try {
         const { id } = req.params;
-        await pool.execute('UPDATE menu_items SET deleted_at = CURRENT_TIMESTAMP WHERE menu_item_id = ?', [id]);
-        return successResponse(res, null, 'Menu item deleted');
+        await db_1.default.execute('UPDATE menu_items SET deleted_at = CURRENT_TIMESTAMP WHERE menu_item_id = ?', [id]);
+        return (0, response_1.successResponse)(res, null, 'Menu item deleted');
     }
     catch (error) {
         console.error('deleteMenuItem Error:', error);
-        return errorResponse(res, 'Failed to delete menu item', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to delete menu item', 500, error);
     }
 };
+exports.deleteMenuItem = deleteMenuItem;

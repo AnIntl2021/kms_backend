@@ -1,8 +1,14 @@
-import { successResponse, errorResponse } from '../utils/response';
-import pool from '../config/db';
-export const getPurchaseOrders = async (req, res) => {
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.deletePurchaseOrder = exports.updatePurchaseOrder = exports.receivePurchaseOrder = exports.createPurchaseOrder = exports.getPurchaseOrderById = exports.getPurchaseOrders = void 0;
+const response_1 = require("../utils/response");
+const db_1 = __importDefault(require("../config/db"));
+const getPurchaseOrders = async (req, res) => {
     try {
-        const [orders] = await pool.execute(`
+        const [orders] = await db_1.default.execute(`
       SELECT po.*, v.name_en as vendor_name, pb.name_en as branch_name
       FROM purchase_orders po
       JOIN vendors v ON po.vendor_id = v.vendor_id
@@ -10,16 +16,17 @@ export const getPurchaseOrders = async (req, res) => {
       WHERE po.deleted_at IS NULL 
       ORDER BY po.created_at DESC
     `);
-        return successResponse(res, orders);
+        return (0, response_1.successResponse)(res, orders);
     }
     catch (error) {
-        return errorResponse(res, 'Failed to fetch purchase orders', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to fetch purchase orders', 500, error);
     }
 };
-export const getPurchaseOrderById = async (req, res) => {
+exports.getPurchaseOrders = getPurchaseOrders;
+const getPurchaseOrderById = async (req, res) => {
     try {
         const { id } = req.params;
-        const [orders] = await pool.execute(`
+        const [orders] = await db_1.default.execute(`
       SELECT po.*, v.name_en as vendor_name, v.name_ar as vendor_name_ar, pb.name_en as branch_name
       FROM purchase_orders po
       JOIN vendors v ON po.vendor_id = v.vendor_id
@@ -27,21 +34,22 @@ export const getPurchaseOrderById = async (req, res) => {
       WHERE po.purchase_id = ?
     `, [id]);
         if (orders.length === 0)
-            return errorResponse(res, 'PO not found', 404);
-        const [items] = await pool.execute(`
+            return (0, response_1.errorResponse)(res, 'PO not found', 404);
+        const [items] = await db_1.default.execute(`
       SELECT poi.*, ii.name_en, ii.name_ar, ii.unit_en 
       FROM purchase_order_items poi
       JOIN inventory_items ii ON poi.inventory_item_id = ii.inventory_item_id
       WHERE poi.purchase_id = ?
     `, [id]);
-        return successResponse(res, { ...orders[0], items });
+        return (0, response_1.successResponse)(res, { ...orders[0], items });
     }
     catch (error) {
-        return errorResponse(res, 'Failed to fetch PO details', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to fetch PO details', 500, error);
     }
 };
-export const createPurchaseOrder = async (req, res) => {
-    const connection = await pool.getConnection();
+exports.getPurchaseOrderById = getPurchaseOrderById;
+const createPurchaseOrder = async (req, res) => {
+    const connection = await db_1.default.getConnection();
     try {
         await connection.beginTransaction();
         const { vendor_id, branch_id, po_number, invoice_type, tax_amount, discount_amount, discount_percentage, additional_charges, final_amount, items, notes, date } = req.body;
@@ -95,18 +103,20 @@ export const createPurchaseOrder = async (req, res) => {
         // 3. Update Total in Header if needed (or ensure final_amount is correctly stored)
         await connection.execute('UPDATE purchase_orders SET total_amount = ? WHERE purchase_id = ?', [total_amount, purchase_id]);
         await connection.commit();
-        return successResponse(res, { purchase_id }, 'Purchase order created successfully', 201);
+        return (0, response_1.successResponse)(res, { purchase_id }, 'Purchase order created successfully', 201);
     }
     catch (error) {
         await connection.rollback();
-        return errorResponse(res, 'Failed to create PO segregation', 500, error);
+        console.error('Create PO Error:', error);
+        return (0, response_1.errorResponse)(res, 'Failed to create PO segregation', 500, error);
     }
     finally {
         connection.release();
     }
 };
-export const receivePurchaseOrder = async (req, res) => {
-    const connection = await pool.getConnection();
+exports.createPurchaseOrder = createPurchaseOrder;
+const receivePurchaseOrder = async (req, res) => {
+    const connection = await db_1.default.getConnection();
     try {
         const { id } = req.params;
         const admin_id = req.user.admin_id;
@@ -147,19 +157,20 @@ export const receivePurchaseOrder = async (req, res) => {
         // 4. Mark PO as received
         await connection.execute('UPDATE purchase_orders SET status = ?, received_at = CURRENT_TIMESTAMP, received_by = ? WHERE purchase_id = ?', ['received', admin_id, id]);
         await connection.commit();
-        return successResponse(res, null, 'Stock received into segregated inventory successfully');
+        return (0, response_1.successResponse)(res, null, 'Stock received into segregated inventory successfully');
     }
     catch (error) {
         await connection.rollback();
         console.error('SERVER PO RECEIVE ERROR:', error);
-        return errorResponse(res, error.message || 'Failed to receive PO network', 500);
+        return (0, response_1.errorResponse)(res, error.message || 'Failed to receive PO network', 500);
     }
     finally {
         connection.release();
     }
 };
-export const updatePurchaseOrder = async (req, res) => {
-    const connection = await pool.getConnection();
+exports.receivePurchaseOrder = receivePurchaseOrder;
+const updatePurchaseOrder = async (req, res) => {
+    const connection = await db_1.default.getConnection();
     try {
         const { id } = req.params;
         const { vendor_id, branch_id, invoice_type, tax_amount, discount_amount, discount_percentage, additional_charges, final_amount, items, notes, date } = req.body;
@@ -224,30 +235,32 @@ export const updatePurchaseOrder = async (req, res) => {
             ]);
         }
         await connection.commit();
-        return successResponse(res, null, 'Purchase order updated successfully');
+        return (0, response_1.successResponse)(res, null, 'Purchase order updated successfully');
     }
     catch (error) {
         await connection.rollback();
-        return errorResponse(res, error.message || 'Failed to update PO', 500);
+        return (0, response_1.errorResponse)(res, error.message || 'Failed to update PO', 500);
     }
     finally {
         connection.release();
     }
 };
-export const deletePurchaseOrder = async (req, res) => {
+exports.updatePurchaseOrder = updatePurchaseOrder;
+const deletePurchaseOrder = async (req, res) => {
     try {
         const { id } = req.params;
         // Check if received (cannot delete if already received/inventoried without reversal)
-        const [orders] = await pool.execute('SELECT status FROM purchase_orders WHERE purchase_id = ?', [id]);
+        const [orders] = await db_1.default.execute('SELECT status FROM purchase_orders WHERE purchase_id = ?', [id]);
         if (orders.length === 0)
-            return errorResponse(res, 'PO not found', 404);
+            return (0, response_1.errorResponse)(res, 'PO not found', 404);
         if (orders[0].status === 'received') {
-            return errorResponse(res, 'Cannot delete a received purchase order. Please reverse it first.', 400);
+            return (0, response_1.errorResponse)(res, 'Cannot delete a received purchase order. Please reverse it first.', 400);
         }
-        await pool.execute('UPDATE purchase_orders SET deleted_at = CURRENT_TIMESTAMP WHERE purchase_id = ?', [id]);
-        return successResponse(res, null, 'Purchase order deleted successfully');
+        await db_1.default.execute('UPDATE purchase_orders SET deleted_at = CURRENT_TIMESTAMP WHERE purchase_id = ?', [id]);
+        return (0, response_1.successResponse)(res, null, 'Purchase order deleted successfully');
     }
     catch (error) {
-        return errorResponse(res, 'Failed to delete purchase order', 500, error);
+        return (0, response_1.errorResponse)(res, 'Failed to delete purchase order', 500, error);
     }
 };
+exports.deletePurchaseOrder = deletePurchaseOrder;
