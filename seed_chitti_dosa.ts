@@ -91,7 +91,7 @@ async function seed() {
         price: 0.950,
         cost_price: 0.200,
         category_id: 1,
-        image_url: null,
+        image_url: 'uploads/menu/plain_dosa.png',
         description_en: 'Simple crispy golden crepe, served with sambar and traditional chutneys.',
         description_ar: 'كرّيب مقرمش ذهبي بسيط، يقدم مع السامبار والشتني التقليدي.'
       },
@@ -101,7 +101,7 @@ async function seed() {
         price: 1.450,
         cost_price: 0.400,
         category_id: 1,
-        image_url: null,
+        image_url: 'uploads/menu/mysore_dosa.png',
         description_en: 'Crispy crepe layered with spicy red garlic chutney and stuffed with spiced potato masala.',
         description_ar: 'كرّيب مقرمش مغطى بشتني الثوم الأحمر الحار ومحشو بالبطاطا المتبلة.'
       },
@@ -111,7 +111,7 @@ async function seed() {
         price: 1.350,
         cost_price: 0.450,
         category_id: 1,
-        image_url: null,
+        image_url: 'uploads/menu/cheese_dosa.png',
         description_en: 'Crispy crepe loaded with melted cheese, perfect choice for cheese lovers.',
         description_ar: 'كرّيب مقرمش غني بالجبنة الذائبة، خيار مثالي لمحبي الجبن.'
       },
@@ -163,7 +163,7 @@ async function seed() {
         price: 1.150,
         cost_price: 0.300,
         category_id: 3,
-        image_url: null,
+        image_url: 'uploads/menu/tomato_uttapam.png',
         description_en: 'Thick savory pancake topped with juicy tomatoes and mild spices.',
         description_ar: 'بانكيك سميك مالح مغطى بالطماطم الطازجة والبهارات الخفيفة.'
       },
@@ -184,7 +184,7 @@ async function seed() {
         price: 0.400,
         cost_price: 0.080,
         category_id: 4,
-        image_url: null,
+        image_url: 'uploads/menu/masala_chai.png',
         description_en: 'Traditional Indian milk tea brewed with cardamom, ginger, and aromatic spices.',
         description_ar: 'شاي حليب هندي تقليدي محضر مع الهيل والزنجبيل والبهارات العطرية.'
       }
