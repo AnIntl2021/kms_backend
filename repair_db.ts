@@ -147,6 +147,7 @@ async function repairDB() {
           ) ENGINE=InnoDB
         `);
         await addColumnIfNotExist('production_logs', 'branch_id', 'INT NULL AFTER expiry_date');
+        await addColumnIfNotExist('production_logs', 'deleted_at', 'TIMESTAMP NULL DEFAULT NULL');
 
         // 3. CREATE production_items
         await pool.execute(`
@@ -216,6 +217,7 @@ async function repairDB() {
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
           ) ENGINE=InnoDB
         `);
+        await addColumnIfNotExist('sales_returns', 'deleted_at', 'TIMESTAMP NULL DEFAULT NULL');
         // 8. CREATE sales_return_items
         await pool.execute(`
           CREATE TABLE IF NOT EXISTS sales_return_items (

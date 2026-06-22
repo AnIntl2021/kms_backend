@@ -141,7 +141,7 @@ export const getWastageReport = async (req: Request, res: Response) => {
       LEFT JOIN sales_returns r ON w.return_id = r.return_id
       LEFT JOIN vendors v ON COALESCE(w.vendor_id, r.vendor_id) = v.vendor_id
       LEFT JOIN partner_branches pb ON r.branch_id = pb.branch_id
-      LEFT JOIN admins a ON w.admin_id = a.id
+      LEFT JOIN admins a ON w.admin_id = a.admin_id
       WHERE 1=1
     `;
     const params: any[] = [];
@@ -206,8 +206,8 @@ export const getAnalyticsSummary = async (req: Request, res: Response) => {
     const dailyQuery = `
       SELECT 
         DATE_FORMAT(s.created_at, '%Y-%m-%d') as date,
-        SUM(s.final_amount) as revenue,
-        SUM(s.final_amount - (
+        SUM(s.total_amount) as revenue,
+        SUM(s.total_amount - (
           SELECT IFNULL(SUM(soi.quantity * COALESCE(mi.cost_price, 0)), 0)
           FROM sales_order_items soi
           LEFT JOIN menu_items mi ON soi.menu_item_id = mi.menu_item_id
@@ -229,7 +229,7 @@ export const getAnalyticsSummary = async (req: Request, res: Response) => {
     const customersQuery = `
       SELECT 
         IFNULL(v.name_en, s.customer_name) as name,
-        SUM(s.final_amount) as revenue
+        SUM(s.total_amount) as revenue
       FROM sales_orders s
       LEFT JOIN vendors v ON s.vendor_id = v.vendor_id
       WHERE s.deleted_at IS NULL ${dateFilter} ${vendorFilter} ${branchFilter} ${brandFilter} ${salesmanFilter}
@@ -481,7 +481,7 @@ export const getFoodCostReport = async (req: Request, res: Response) => {
     let wasteQuery = `
       SELECT w.inventory_item_id, SUM(w.quantity) as total_qty
       FROM wastage w
-      LEFT JOIN admins a ON w.admin_id = a.id
+      LEFT JOIN admins a ON w.admin_id = a.admin_id
       WHERE w.deleted_at IS NULL
         AND DATE(w.created_at) BETWEEN ? AND ?
     `;
@@ -546,7 +546,7 @@ export const getFoodCostReport = async (req: Request, res: Response) => {
     let wasteSinceStartQuery = `
       SELECT w.inventory_item_id, SUM(w.quantity) as total_qty
       FROM wastage w
-      LEFT JOIN admins a ON w.admin_id = a.id
+      LEFT JOIN admins a ON w.admin_id = a.admin_id
       WHERE w.deleted_at IS NULL
         AND DATE(w.created_at) >= ?
     `;
@@ -611,7 +611,7 @@ export const getFoodCostReport = async (req: Request, res: Response) => {
     let wasteAfterEndQuery = `
       SELECT w.inventory_item_id, SUM(w.quantity) as total_qty
       FROM wastage w
-      LEFT JOIN admins a ON w.admin_id = a.id
+      LEFT JOIN admins a ON w.admin_id = a.admin_id
       WHERE w.deleted_at IS NULL
         AND DATE(w.created_at) > ?
     `;
@@ -692,7 +692,7 @@ export const getFoodCostReport = async (req: Request, res: Response) => {
     });
 
     let salesQuery = `
-      SELECT SUM(final_amount) as revenue
+      SELECT SUM(total_amount) as revenue
       FROM sales_orders
       WHERE deleted_at IS NULL
         AND DATE(created_at) BETWEEN ? AND ?

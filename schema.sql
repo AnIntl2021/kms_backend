@@ -504,3 +504,110 @@ CREATE TABLE IF NOT EXISTS operational_expenses (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (branch_id) REFERENCES branches(branch_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
+
+-- 20. POS Counters
+CREATE TABLE IF NOT EXISTS pos_counters (
+  counter_id INT AUTO_INCREMENT PRIMARY KEY,
+  branch_id INT NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  status ENUM('active', 'inactive') DEFAULT 'active',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  deleted_at TIMESTAMP NULL,
+  FOREIGN KEY (branch_id) REFERENCES branches(branch_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 21. POS Counter Sessions
+CREATE TABLE IF NOT EXISTS pos_counter_sessions (
+  session_id INT AUTO_INCREMENT PRIMARY KEY,
+  counter_id INT NOT NULL,
+  branch_id INT NOT NULL,
+  opened_by INT NOT NULL,
+  opened_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  opening_balance DECIMAL(10,3) DEFAULT 0.000,
+  closed_by INT NULL,
+  closed_at TIMESTAMP NULL,
+  closing_balance DECIMAL(10,3) NULL,
+  status ENUM('open', 'closed') DEFAULT 'open',
+  FOREIGN KEY (counter_id) REFERENCES pos_counters(counter_id),
+  FOREIGN KEY (branch_id) REFERENCES branches(branch_id),
+  FOREIGN KEY (opened_by) REFERENCES admins(admin_id),
+  FOREIGN KEY (closed_by) REFERENCES admins(admin_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 22. Production Logs
+CREATE TABLE IF NOT EXISTS production_logs (
+  production_id INT AUTO_INCREMENT PRIMARY KEY,
+  batch_number VARCHAR(100) UNIQUE,
+  production_date DATE,
+  expiry_date DATE,
+  branch_id INT NULL,
+  admin_id INT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  deleted_at TIMESTAMP NULL,
+  FOREIGN KEY (branch_id) REFERENCES branches(branch_id),
+  FOREIGN KEY (admin_id) REFERENCES admins(admin_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 23. Production Items
+CREATE TABLE IF NOT EXISTS production_items (
+  item_id INT AUTO_INCREMENT PRIMARY KEY,
+  production_id INT,
+  menu_item_id INT,
+  quantity_produced INT NOT NULL,
+  FOREIGN KEY (production_id) REFERENCES production_logs(production_id) ON DELETE CASCADE,
+  FOREIGN KEY (menu_item_id) REFERENCES menu_items(menu_item_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 24. Sales Returns
+CREATE TABLE IF NOT EXISTS sales_returns (
+  return_id INT AUTO_INCREMENT PRIMARY KEY,
+  sale_id INT NULL,
+  vendor_id INT,
+  branch_id INT NULL,
+  reason VARCHAR(255),
+  total_credit_amount DECIMAL(10,3) DEFAULT 0.000,
+  admin_id INT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  deleted_at TIMESTAMP NULL,
+  FOREIGN KEY (sale_id) REFERENCES sales_orders(sale_id) ON DELETE SET NULL,
+  FOREIGN KEY (vendor_id) REFERENCES vendors(vendor_id) ON DELETE SET NULL,
+  FOREIGN KEY (branch_id) REFERENCES branches(branch_id) ON DELETE SET NULL,
+  FOREIGN KEY (admin_id) REFERENCES admins(admin_id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 25. Sales Return Items
+CREATE TABLE IF NOT EXISTS sales_return_items (
+  return_item_id INT AUTO_INCREMENT PRIMARY KEY,
+  return_id INT,
+  menu_item_id INT,
+  quantity DECIMAL(10,3) NOT NULL,
+  unit_price DECIMAL(10,3) NOT NULL,
+  expiry_date DATE NULL,
+  FOREIGN KEY (return_id) REFERENCES sales_returns(return_id) ON DELETE CASCADE,
+  FOREIGN KEY (menu_item_id) REFERENCES menu_items(menu_item_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 26. Notifications
+CREATE TABLE IF NOT EXISTS notifications (
+  notification_id INT AUTO_INCREMENT PRIMARY KEY,
+  message TEXT NOT NULL,
+  type ENUM('info', 'warning', 'success', 'danger') DEFAULT 'info',
+  is_read BOOLEAN DEFAULT FALSE,
+  admin_id INT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (admin_id) REFERENCES admins(admin_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 27. Salesmen
+CREATE TABLE IF NOT EXISTS salesmen (
+  salesman_id INT AUTO_INCREMENT PRIMARY KEY,
+  name_en VARCHAR(255) NOT NULL,
+  name_ar VARCHAR(255),
+  phone VARCHAR(20),
+  email VARCHAR(100),
+  commission_rate DECIMAL(5,2) DEFAULT 0.00,
+  status ENUM('active', 'inactive') DEFAULT 'active',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deleted_at TIMESTAMP NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
