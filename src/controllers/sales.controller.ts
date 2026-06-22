@@ -112,7 +112,7 @@ export const getSaleById = async (req: Request, res: Response) => {
 export const createSale = async (req: any, res: Response) => {
   const connection = await pool.getConnection();
   try {
-    const { branch_id, customer_name, client_phone, client_address, notes, items, total_amount, order_type, payment_method, payment_status, counter_id } = req.body;
+    const { branch_id, customer_name, client_phone, client_address, notes, items, total_amount, discount_amount = 0, discount_percentage = 0, table_number = null, order_type, payment_method, payment_status, counter_id } = req.body;
     const admin_id = req.user?.admin_id || 1;
     let brandId = req.user?.brand_id || null;
 
@@ -128,9 +128,11 @@ export const createSale = async (req: any, res: Response) => {
       }
     }
 
+    const final_amount = Math.max(0, Number(total_amount) - Number(discount_amount));
+
     const [orderRes]: any = await connection.execute(
-      'INSERT INTO sales_orders (order_number, branch_id, order_type, payment_method, payment_status, customer_name, client_phone, client_address, notes, total_amount, status, admin_id, brand_id, counter_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      ['PENDING', branch_id || 1, order_type || 'walk_in', payment_method || 'cash', payment_status || (payment_method === 'credit' ? 'credit' : 'paid'), customer_name || null, client_phone || null, client_address || null, notes || null, total_amount, 'completed', admin_id, brandId, counter_id || null]
+      'INSERT INTO sales_orders (order_number, branch_id, order_type, payment_method, payment_status, customer_name, client_phone, client_address, notes, total_amount, discount_amount, discount_percentage, final_amount, table_number, status, admin_id, brand_id, counter_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      ['PENDING', branch_id || 1, order_type || 'walk_in', payment_method || 'cash', payment_status || (payment_method === 'credit' ? 'credit' : 'paid'), customer_name || null, client_phone || null, client_address || null, notes || null, total_amount, discount_amount, discount_percentage, final_amount, table_number, 'completed', admin_id, brandId, counter_id || null]
     );
 
     const sale_id = orderRes.insertId;

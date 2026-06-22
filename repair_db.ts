@@ -167,6 +167,10 @@ async function repairDB() {
         await addColumnIfNotExist('sales_orders', 'expiry_date', 'DATE AFTER batch_number');
         await addColumnIfNotExist('sales_orders', 'dispatch_status', "ENUM('pending', 'dispatched', 'in_transit', 'delivered', 'returned', 'cancelled') DEFAULT 'pending' AFTER expiry_date");
         await addColumnIfNotExist('sales_orders', 'branch_id', "INT NULL");
+        await addColumnIfNotExist('sales_orders', 'discount_percentage', 'DECIMAL(5, 2) DEFAULT 0.00');
+        await addColumnIfNotExist('sales_orders', 'discount_amount', 'DECIMAL(10, 3) DEFAULT 0.000');
+        await addColumnIfNotExist('sales_orders', 'final_amount', 'DECIMAL(10, 3) DEFAULT 0.000');
+        await addColumnIfNotExist('sales_orders', 'table_number', 'VARCHAR(50) NULL');
 
         // 5. CREATE system_settings
         await pool.execute(`

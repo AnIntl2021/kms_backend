@@ -245,6 +245,10 @@ CREATE TABLE IF NOT EXISTS sales_orders (
   client_address TEXT,
   notes TEXT,
   total_amount DECIMAL(10,3) NOT NULL DEFAULT 0.000, -- KWD
+  discount_percentage DECIMAL(5,2) DEFAULT 0.00,
+  discount_amount DECIMAL(10,3) DEFAULT 0.000,
+  final_amount DECIMAL(10,3) DEFAULT 0.000,
+  table_number VARCHAR(50) NULL,
   status ENUM('pending', 'processing', 'completed', 'cancelled') DEFAULT 'pending',
   admin_id INT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
