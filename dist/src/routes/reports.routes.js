@@ -1,0 +1,16 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const reports_controller_js_1 = require("../controllers/reports.controller.js");
+const auth_middleware_js_1 = require("../middleware/auth.middleware.js");
+const router = (0, express_1.Router)();
+router.get('/sales', auth_middleware_js_1.authMiddleware, reports_controller_js_1.getSalesReport);
+router.get('/production', auth_middleware_js_1.authMiddleware, reports_controller_js_1.getProductionReport);
+router.get('/wastage', auth_middleware_js_1.authMiddleware, reports_controller_js_1.getWastageReport);
+router.get('/purchase', auth_middleware_js_1.authMiddleware, reports_controller_js_1.getPurchaseReport);
+router.get('/products', auth_middleware_js_1.authMiddleware, reports_controller_js_1.getProductPerformanceReport);
+router.get('/analytics', auth_middleware_js_1.authMiddleware, reports_controller_js_1.getAnalyticsSummary);
+router.get('/food-cost', auth_middleware_js_1.authMiddleware, reports_controller_js_1.getFoodCostReport);
+router.get('/client-statements', auth_middleware_js_1.authMiddleware, reports_controller_js_1.getClientStatements);
+router.get('/store-pnl', auth_middleware_js_1.authMiddleware, reports_controller_js_1.getOperationalPNL);
+exports.default = router;

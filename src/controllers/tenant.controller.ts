@@ -47,12 +47,28 @@ export const createTenant = async (req: Request, res: Response) => {
 
 export const updateTenant = async (req: Request, res: Response) => {
     const { id } = req.params;
-    const { name, email, phone, plan, status } = req.body;
+    const { 
+        name, email, phone, plan, status, 
+        plan_end_date,
+        base_branches, base_counters, base_users,
+        extra_branches, extra_counters, extra_users
+    } = req.body;
 
     try {
         await pool.execute(
-            'UPDATE tenants SET name = ?, contact_email = ?, contact_phone = ?, plan = ?, status = ? WHERE tenant_id = ?',
-            [name, email, phone || null, plan, status, id]
+            `UPDATE tenants 
+             SET name = ?, contact_email = ?, contact_phone = ?, plan = ?, status = ?,
+                 plan_end_date = ?,
+                 base_branches = ?, base_counters = ?, base_users = ?,
+                 extra_branches = ?, extra_counters = ?, extra_users = ?
+             WHERE tenant_id = ?`,
+            [
+                name, email, phone || null, plan, status,
+                plan_end_date || null,
+                base_branches || 1, base_counters || 1, base_users || 3,
+                extra_branches || 0, extra_counters || 0, extra_users || 0,
+                id
+            ]
         );
 
         return successResponse(res, null, 'Tenant updated successfully');
@@ -64,12 +80,8 @@ export const updateTenant = async (req: Request, res: Response) => {
 
 export const getTenants = async (req: Request, res: Response) => {
     try {
-        // We will optionally calculate MRR and Branch counts later, for now just return the tenants
-        // We can do a basic join or subquery if we had global branch tracking, 
-        // but branches are inside the tenant DBs! So we just return the master tenant rows.
         const [rows] = await pool.execute('SELECT * FROM tenants ORDER BY created_at DESC');
         
-        // Mock branches and MRR for now based on plan
         const enrichedTenants = (rows as any[]).map(t => ({
             id: t.tenant_id,
             name: t.name,
@@ -78,7 +90,17 @@ export const getTenants = async (req: Request, res: Response) => {
             plan: t.plan,
             status: t.status,
             db_name: t.db_name,
-            branches: t.plan === 'Enterprise' ? 10 : (t.plan === 'Pro' ? 3 : 1),
+            plan_start_date: t.plan_start_date,
+            plan_end_date: t.plan_end_date,
+            base_branches: t.base_branches,
+            base_counters: t.base_counters,
+            base_users: t.base_users,
+            extra_branches: t.extra_branches,
+            extra_counters: t.extra_counters,
+            extra_users: t.extra_users,
+            branches: (t.base_branches || 1) + (t.extra_branches || 0),
+            counters: (t.base_counters || 1) + (t.extra_counters || 0),
+            users: (t.base_users || 3) + (t.extra_users || 0),
             mrr: t.plan === 'Enterprise' ? 499 : (t.plan === 'Pro' ? 149 : 49)
         }));
 

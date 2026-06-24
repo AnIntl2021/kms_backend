@@ -1,0 +1,277 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.deleteMenuItem = exports.updateMenuItem = exports.createMenuItem = exports.getMenuItemDetails = exports.getMenuItems = void 0;
+const response_1 = require("../utils/response");
+const db_1 = __importDefault(require("../config/db"));
+const getMenuItems = async (req, res) => {
+    try {
+        const user = req.user;
+        const branchId = user?.branch_id || req.query.branch_id || null;
+        const isPOS = req.query.pos === 'true';
+        let selectFields = `mi.*, c.name_en as category_name`;
+        let joinClause = ``;
+        const params = [];
+        if (branchId) {
+            selectFields = `
+        mi.menu_item_id, mi.brand_id, mi.category_id, mi.name_en, mi.name_ar, mi.barcode, mi.unit_en, mi.unit_ar, mi.yield_quantity, mi.description_en, mi.description_ar, mi.cost_price, mi.type, mi.image_url, mi.sort_order, mi.created_at, mi.updated_at, mi.deleted_at,
+        COALESCE(bmi.custom_price, mi.price) as price,
+        COALESCE(bmi.status, mi.status) as status,
+        bmi.custom_price as branch_custom_price,
+        bmi.status as branch_status,
+        c.name_en as category_name
+      `;
+            joinClause = `LEFT JOIN branch_menu_items bmi ON mi.menu_item_id = bmi.menu_item_id AND bmi.branch_id = ?`;
+            params.push(branchId);
+        }
+        let query = `
+      SELECT ${selectFields}
+      FROM menu_items mi
+      LEFT JOIN categories c ON mi.category_id = c.category_id
+      ${joinClause}
+      WHERE mi.deleted_at IS NULL
+    `;
+        if (user && user.brand_id) {
+            query += ' AND mi.brand_id = ?';
+            params.push(user.brand_id);
+        }
+        else if (req.query.brand_id) {
+            query += ' AND mi.brand_id = ?';
+            params.push(req.query.brand_id);
+        }
+        if (branchId && isPOS) {
+            query += " AND COALESCE(bmi.status, mi.status) = 'available'";
+        }
+        query += ' ORDER BY mi.sort_order ASC, mi.name_en ASC';
+        const [items] = await db_1.default.execute(query, params);
+        return (0, response_1.successResponse)(res, items);
+    }
+    catch (error) {
+        console.error('getMenuItems Error:', error);
+        return (0, response_1.errorResponse)(res, 'Failed to fetch menu items', 500, error);
+    }
+};
+exports.getMenuItems = getMenuItems;
+const getMenuItemDetails = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [items] = await db_1.default.execute('SELECT * FROM menu_items WHERE menu_item_id = ?', [id]);
+        if (items.length === 0)
+            return (0, response_1.errorResponse)(res, 'Item not found', 404);
+        const [ingredients] = await db_1.default.execute(`
+      SELECT 
+        mii.*, 
+        COALESCE(ii.name_en, smi.name_en) as name_en,
+        COALESCE(ii.unit_en, 'Batch') as unit_en 
+      FROM menu_item_ingredients mii
+      LEFT JOIN inventory_items ii ON mii.inventory_item_id = ii.inventory_item_id
+      LEFT JOIN menu_items smi ON mii.sub_menu_item_id = smi.menu_item_id
+      WHERE mii.menu_item_id = ?
+    `, [id]);
+        const [branchCustomizations] = await db_1.default.execute(`
+      SELECT bmi.*, b.name_en as branch_name 
+      FROM branch_menu_items bmi 
+      JOIN branches b ON bmi.branch_id = b.branch_id 
+      WHERE bmi.menu_item_id = ?
+    `, [id]);
+        return (0, response_1.successResponse)(res, { ...items[0], ingredients, branch_customizations: branchCustomizations });
+    }
+    catch (error) {
+        console.error('getMenuItemDetails Error:', error);
+        return (0, response_1.errorResponse)(res, 'Failed to fetch menu details', 500, error);
+    }
+};
+exports.getMenuItemDetails = getMenuItemDetails;
+const createMenuItem = async (req, res) => {
+    const connection = await db_1.default.getConnection();
+    try {
+        await connection.beginTransaction();
+        const user = req.user;
+        const { name_en, name_ar, category_id, price, cost_price, description_en, description_ar, type, barcode, unit_en, unit_ar } = req.body;
+        let { ingredients } = req.body;
+        let brandId = req.body.brand_id || null;
+        if (user && user.brand_id) {
+            brandId = user.brand_id;
+        }
+        // Support Multipart/FormData (ingredients arrive as JSON string)
+        if (typeof ingredients === 'string') {
+            try {
+                ingredients = JSON.parse(ingredients);
+            }
+            catch (e) {
+                ingredients = [];
+            }
+        }
+        const image_url = req.file ? `/uploads/menu/${req.file.filename}` : null;
+        const yield_quantity = Number(req.body.yield_quantity || 1.000);
+        // 1. Create Menu Item
+        const [result] = await connection.execute('INSERT INTO menu_items (category_id, name_en, name_ar, barcode, price, unit_en, unit_ar, cost_price, type, description_en, description_ar, image_url, yield_quantity, brand_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
+            category_id || null,
+            name_en,
+            name_ar,
+            barcode || null,
+            Number(price || 0),
+            unit_en || 'piece',
+            unit_ar || 'حبة',
+            Number(cost_price || 0),
+            type || 'selling',
+            description_en || null,
+            description_ar || null,
+            image_url,
+            yield_quantity,
+            brandId
+        ]);
+        const menu_item_id = result.insertId;
+        // 2. Add Ingredients (Recipe)
+        if (ingredients && Array.isArray(ingredients)) {
+            for (const ing of ingredients) {
+                let invId = null;
+                let subMenuId = null;
+                const rawId = String(ing.inventory_item_id || '');
+                if (rawId.startsWith('pre-')) {
+                    subMenuId = rawId.replace('pre-', '');
+                }
+                else {
+                    invId = rawId.replace('inv-', '');
+                }
+                if (!invId && !subMenuId)
+                    continue;
+                await connection.execute('INSERT INTO menu_item_ingredients (menu_item_id, inventory_item_id, sub_menu_item_id, package_id, quantity) VALUES (?, ?, ?, ?, ?)', [menu_item_id, invId, subMenuId, ing.package_id || null, ing.quantity]);
+            }
+        }
+        // 3. Add Branch Customizations
+        let { branch_customizations } = req.body;
+        if (typeof branch_customizations === 'string') {
+            try {
+                branch_customizations = JSON.parse(branch_customizations);
+            }
+            catch (e) {
+                branch_customizations = [];
+            }
+        }
+        if (branch_customizations && Array.isArray(branch_customizations)) {
+            for (const custom of branch_customizations) {
+                const hasCustomPrice = custom.custom_price !== undefined && custom.custom_price !== '' && custom.custom_price !== null;
+                const isUnavailable = custom.status === 'unavailable';
+                if (hasCustomPrice || isUnavailable) {
+                    const cPrice = hasCustomPrice ? Number(custom.custom_price) : null;
+                    await connection.execute('INSERT INTO branch_menu_items (branch_id, menu_item_id, custom_price, status) VALUES (?, ?, ?, ?)', [custom.branch_id, menu_item_id, cPrice, custom.status || 'available']);
+                }
+            }
+        }
+        await connection.commit();
+        return (0, response_1.successResponse)(res, { menu_item_id }, 'Menu item created with recipe successfully!', 201);
+    }
+    catch (error) {
+        await connection.rollback();
+        console.error('⛔ createMenuItem FAILURE:', error.message);
+        return (0, response_1.errorResponse)(res, `Database Error: ${error.message}`, 500, error);
+    }
+    finally {
+        connection.release();
+    }
+};
+exports.createMenuItem = createMenuItem;
+const updateMenuItem = async (req, res) => {
+    const connection = await db_1.default.getConnection();
+    try {
+        const { id } = req.params;
+        await connection.beginTransaction();
+        // 1. Check if item exists
+        const [existing] = await connection.execute('SELECT image_url FROM menu_items WHERE menu_item_id = ?', [id]);
+        if (existing.length === 0)
+            throw new Error('Item not found');
+        const { name_en, name_ar, category_id, price, unit_en, unit_ar, cost_price, description_en, description_ar, status, type, barcode } = req.body;
+        let ingredients = req.body.ingredients;
+        if (typeof ingredients === 'string') {
+            try {
+                ingredients = JSON.parse(ingredients);
+            }
+            catch (e) {
+                ingredients = [];
+            }
+        }
+        const image_url = req.file ? `/uploads/menu/${req.file.filename}` : existing[0].image_url;
+        const yield_quantity = Number(req.body.yield_quantity || 1.000);
+        // 2. Update Menu Item Header
+        await connection.execute(`UPDATE menu_items SET 
+        category_id = ?, 
+        name_en = ?, 
+        name_ar = ?, 
+        barcode = ?,
+        price = ?, 
+        unit_en = ?,
+        unit_ar = ?,
+        cost_price = ?, 
+        type = ?,
+        description_en = ?, 
+        description_ar = ?, 
+        image_url = ?,
+        status = ?,
+        yield_quantity = ?
+      WHERE menu_item_id = ?`, [category_id, name_en, name_ar, barcode || null, price, unit_en || 'piece', unit_ar || 'حبة', cost_price || 0, type || 'selling', description_en || null, description_ar || null, image_url, status || 'available', yield_quantity, id]);
+        // 3. Update Ingredients (Delete and Re-insert)
+        await connection.execute('DELETE FROM menu_item_ingredients WHERE menu_item_id = ?', [id]);
+        if (ingredients && Array.isArray(ingredients)) {
+            for (const ing of ingredients) {
+                let invId = null;
+                let subMenuId = null;
+                const rawId = String(ing.inventory_item_id || '');
+                if (rawId.startsWith('pre-')) {
+                    subMenuId = rawId.replace('pre-', '');
+                }
+                else {
+                    invId = rawId.replace('inv-', '');
+                }
+                if (!invId && !subMenuId)
+                    continue;
+                await connection.execute('INSERT INTO menu_item_ingredients (menu_item_id, inventory_item_id, sub_menu_item_id, package_id, quantity) VALUES (?, ?, ?, ?, ?)', [id, invId, subMenuId, ing.package_id || null, ing.quantity]);
+            }
+        }
+        // 4. Update Branch Customizations (Delete and Re-insert)
+        await connection.execute('DELETE FROM branch_menu_items WHERE menu_item_id = ?', [id]);
+        let { branch_customizations } = req.body;
+        if (typeof branch_customizations === 'string') {
+            try {
+                branch_customizations = JSON.parse(branch_customizations);
+            }
+            catch (e) {
+                branch_customizations = [];
+            }
+        }
+        if (branch_customizations && Array.isArray(branch_customizations)) {
+            for (const custom of branch_customizations) {
+                const hasCustomPrice = custom.custom_price !== undefined && custom.custom_price !== '' && custom.custom_price !== null;
+                const isUnavailable = custom.status === 'unavailable';
+                if (hasCustomPrice || isUnavailable) {
+                    const cPrice = hasCustomPrice ? Number(custom.custom_price) : null;
+                    await connection.execute('INSERT INTO branch_menu_items (branch_id, menu_item_id, custom_price, status) VALUES (?, ?, ?, ?)', [custom.branch_id, id, cPrice, custom.status || 'available']);
+                }
+            }
+        }
+        await connection.commit();
+        return (0, response_1.successResponse)(res, null, 'Menu item updated successfully');
+    }
+    catch (error) {
+        await connection.rollback();
+        return (0, response_1.errorResponse)(res, error.message || 'Failed to update menu item', 500, error);
+    }
+    finally {
+        connection.release();
+    }
+};
+exports.updateMenuItem = updateMenuItem;
+const deleteMenuItem = async (req, res) => {
+    try {
+        const { id } = req.params;
+        await db_1.default.execute('UPDATE menu_items SET deleted_at = CURRENT_TIMESTAMP WHERE menu_item_id = ?', [id]);
+        return (0, response_1.successResponse)(res, null, 'Menu item deleted');
+    }
+    catch (error) {
+        console.error('deleteMenuItem Error:', error);
+        return (0, response_1.errorResponse)(res, 'Failed to delete menu item', 500, error);
+    }
+};
+exports.deleteMenuItem = deleteMenuItem;

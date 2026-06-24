@@ -250,12 +250,31 @@ export const verifySubscriptionPayment = async (req: Request, res: Response) => 
 // POS COUNTER MANAGEMENT CONTROLLER METHODS
 // ==========================================
 
+export const getBranchUsers = async (req: Request, res: Response) => {
+  const { branch_id } = req.query;
+  if (!branch_id) {
+    return errorResponse(res, 'branch_id is required', 400);
+  }
+  try {
+    const [rows]: any = await pool.execute(
+      'SELECT admin_id, username, first_name, last_name FROM admins WHERE branch_id = ? AND deleted_at IS NULL AND status = "active"',
+      [Number(branch_id)]
+    );
+    return successResponse(res, rows);
+  } catch (error: any) {
+    console.error('Get Branch Users Error:', error);
+    return errorResponse(res, 'Failed to fetch branch users', 500, error);
+  }
+};
+
 export const getCounters = async (req: Request, res: Response) => {
   try {
     const [rows]: any = await pool.execute(`
-      SELECT pc.*, b.name_en as branch_name_en, b.name_ar as branch_name_ar
+      SELECT pc.*, b.name_en as branch_name_en, b.name_ar as branch_name_ar,
+             a.username, a.first_name, a.last_name
       FROM pos_counters pc
       LEFT JOIN branches b ON pc.branch_id = b.branch_id
+      LEFT JOIN admins a ON pc.admin_id = a.admin_id
       WHERE pc.deleted_at IS NULL
       ORDER BY pc.created_at DESC
     `);
@@ -268,7 +287,7 @@ export const getCounters = async (req: Request, res: Response) => {
 
 export const createCounter = async (req: Request, res: Response) => {
   const dbName = (req as any).user?.tenant_db;
-  const { branch_id, name } = req.body;
+  const { branch_id, name, admin_id } = req.body;
 
   if (!branch_id || !name) {
     return errorResponse(res, 'Branch and counter name are required', 400);
@@ -299,15 +318,35 @@ export const createCounter = async (req: Request, res: Response) => {
 
     // 2. Insert counter
     const [result]: any = await pool.execute(
-      'INSERT INTO pos_counters (branch_id, name) VALUES (?, ?)',
-      [branch_id, name]
+      'INSERT INTO pos_counters (branch_id, name, admin_id) VALUES (?, ?, ?)',
+      [branch_id, name, admin_id || null]
     );
 
-    return successResponse(res, { counter_id: result.insertId, branch_id, name }, 'POS Counter created successfully');
+    return successResponse(res, { counter_id: result.insertId, branch_id, name, admin_id }, 'POS Counter created successfully');
 
   } catch (error: any) {
     console.error('Create Counter Error:', error);
     return errorResponse(res, 'Failed to create POS counter', 500, error);
+  }
+};
+
+export const updateCounter = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { branch_id, name, status, admin_id } = req.body;
+
+  if (!branch_id || !name) {
+    return errorResponse(res, 'Branch and counter name are required', 400);
+  }
+
+  try {
+    await pool.execute(
+      'UPDATE pos_counters SET branch_id = ?, name = ?, status = ?, admin_id = ? WHERE counter_id = ?',
+      [branch_id, name, status || 'active', admin_id || null, id]
+    );
+    return successResponse(res, { counter_id: Number(id), branch_id, name, status, admin_id }, 'POS Counter updated successfully');
+  } catch (error: any) {
+    console.error('Update Counter Error:', error);
+    return errorResponse(res, 'Failed to update POS counter', 500, error);
   }
 };
 

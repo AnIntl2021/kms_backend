@@ -5,11 +5,13 @@ import {
   verifySubscriptionPayment, 
   getCounters, 
   createCounter, 
+  updateCounter,
   deleteCounter,
   getActiveSession,
   openSession,
   getSessionSummary,
-  closeSession
+  closeSession,
+  getBranchUsers
 } from '../controllers/subscription.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
 
@@ -23,7 +25,9 @@ router.post('/create-order', createSubscriptionOrder);
 router.post('/verify-payment', verifySubscriptionPayment);
 
 router.get('/counters', getCounters);
+router.get('/counters/branch-users', getBranchUsers);
 router.post('/counters', createCounter);
+router.put('/counters/:id', updateCounter);
 router.delete('/counters/:id', deleteCounter);
 
 router.get('/counters/active-session', getActiveSession);

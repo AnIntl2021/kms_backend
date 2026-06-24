@@ -1,11 +1,13 @@
 import { Router } from 'express';
-import { getSales, createSale, updateSaleStatus, updatePaymentStatus, getSaleById, returnOrder, deleteSale, searchCustomers } from '../controllers/sales.controller.js';
+import { getSales, createSale, updateSaleStatus, updatePaymentStatus, getSaleById, returnOrder, deleteSale, searchCustomers, getPOSAddons, createPOSAddon } from '../controllers/sales.controller.js';
 import { authMiddleware } from '../middleware/auth.middleware.js';
 
 const router = Router();
 
 router.get('/', authMiddleware, getSales);
 router.get('/customers/search', authMiddleware, searchCustomers);
+router.get('/addons', authMiddleware, getPOSAddons);
+router.post('/addons', authMiddleware, createPOSAddon);
 router.get('/:id', authMiddleware, getSaleById);
 router.post('/', authMiddleware, createSale);
 router.put('/:id/status', authMiddleware, updateSaleStatus);

@@ -1,0 +1,17 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const sales_controller_js_1 = require("../controllers/sales.controller.js");
+const auth_middleware_js_1 = require("../middleware/auth.middleware.js");
+const router = (0, express_1.Router)();
+router.get('/', auth_middleware_js_1.authMiddleware, sales_controller_js_1.getSales);
+router.get('/customers/search', auth_middleware_js_1.authMiddleware, sales_controller_js_1.searchCustomers);
+router.get('/addons', auth_middleware_js_1.authMiddleware, sales_controller_js_1.getPOSAddons);
+router.post('/addons', auth_middleware_js_1.authMiddleware, sales_controller_js_1.createPOSAddon);
+router.get('/:id', auth_middleware_js_1.authMiddleware, sales_controller_js_1.getSaleById);
+router.post('/', auth_middleware_js_1.authMiddleware, sales_controller_js_1.createSale);
+router.put('/:id/status', auth_middleware_js_1.authMiddleware, sales_controller_js_1.updateSaleStatus);
+router.put('/:id/payment-status', auth_middleware_js_1.authMiddleware, sales_controller_js_1.updatePaymentStatus);
+router.post('/:id/return', auth_middleware_js_1.authMiddleware, sales_controller_js_1.returnOrder);
+router.delete('/:id', auth_middleware_js_1.authMiddleware, sales_controller_js_1.deleteSale);
+exports.default = router;

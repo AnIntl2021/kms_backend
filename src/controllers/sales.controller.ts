@@ -52,7 +52,7 @@ export const getSales = async (req: Request, res: Response) => {
     if (rows.length > 0) {
       const saleIds = rows.map((r: any) => r.sale_id);
       const [items]: any = await pool.execute(`
-        SELECT soi.sale_id, soi.menu_item_id, mi.name_en, soi.quantity,
+        SELECT soi.sale_id, soi.menu_item_id, mi.name_en, soi.quantity, soi.price, soi.notes, soi.addons,
           (
              SELECT COALESCE(SUM(sri.quantity), 0) 
              FROM sales_return_items sri 
@@ -151,9 +151,11 @@ export const createSale = async (req: any, res: Response) => {
     );
 
     for (const item of items) {
+      const itemNotes = item.notes || null;
+      const itemAddons = item.addons ? JSON.stringify(item.addons) : null;
       await connection.execute(
-        'INSERT INTO sales_order_items (sale_id, menu_item_id, quantity, price) VALUES (?, ?, ?, ?)',
-        [sale_id, item.menu_item_id, item.quantity, item.price]
+        'INSERT INTO sales_order_items (sale_id, menu_item_id, quantity, price, notes, addons) VALUES (?, ?, ?, ?, ?, ?)',
+        [sale_id, item.menu_item_id, item.quantity, item.price, itemNotes, itemAddons]
       );
 
       // --- STOCK DEDUCTION (BOM - BILL OF MATERIALS with MULTIPLIERS) ---
@@ -441,5 +443,36 @@ export const searchCustomers = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Failed to search customers:', error);
     return errorResponse(res, 'Failed to search customers', 500, error);
+  }
+};
+
+export const getPOSAddons = async (req: Request, res: Response) => {
+  try {
+    const [rows]: any = await pool.execute('SELECT * FROM pos_addons ORDER BY name ASC');
+    return successResponse(res, rows);
+  } catch (error) {
+    console.error('Failed to fetch POS addons:', error);
+    return errorResponse(res, 'Failed to fetch POS addons', 500, error);
+  }
+};
+
+export const createPOSAddon = async (req: Request, res: Response) => {
+  try {
+    const { name, price } = req.body;
+    if (!name) {
+      return errorResponse(res, 'Addon name is required', 400);
+    }
+    const cleanPrice = parseFloat(price) || 0;
+    
+    const [result]: any = await pool.execute(
+      'INSERT INTO pos_addons (name, price) VALUES (?, ?) ON DUPLICATE KEY UPDATE price = VALUES(price)',
+      [name.trim(), cleanPrice]
+    );
+    
+    const addonId = result.insertId || null;
+    return successResponse(res, { addon_id: addonId, name: name.trim(), price: cleanPrice }, 'Addon created/updated successfully');
+  } catch (error) {
+    console.error('Failed to create/update POS addon:', error);
+    return errorResponse(res, 'Failed to create POS addon', 500, error);
   }
 };

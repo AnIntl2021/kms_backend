@@ -1,0 +1,10 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const wastage_controller_1 = require("../controllers/wastage.controller");
+const auth_middleware_1 = require("../middleware/auth.middleware");
+const router = (0, express_1.Router)();
+router.use(auth_middleware_1.authMiddleware);
+router.get('/', wastage_controller_1.getWastageLogs);
+router.post('/', (0, auth_middleware_1.authorize)(['super_admin', 'manager']), wastage_controller_1.recordWastage);
+exports.default = router;

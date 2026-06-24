@@ -1,0 +1,21 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const subscription_controller_1 = require("../controllers/subscription.controller");
+const auth_middleware_1 = require("../middleware/auth.middleware");
+const router = (0, express_1.Router)();
+// Secure all subscription billing and POS counter paths
+router.use(auth_middleware_1.authMiddleware);
+router.get('/status', subscription_controller_1.getSubscriptionStatus);
+router.post('/create-order', subscription_controller_1.createSubscriptionOrder);
+router.post('/verify-payment', subscription_controller_1.verifySubscriptionPayment);
+router.get('/counters', subscription_controller_1.getCounters);
+router.get('/counters/branch-users', subscription_controller_1.getBranchUsers);
+router.post('/counters', subscription_controller_1.createCounter);
+router.put('/counters/:id', subscription_controller_1.updateCounter);
+router.delete('/counters/:id', subscription_controller_1.deleteCounter);
+router.get('/counters/active-session', subscription_controller_1.getActiveSession);
+router.post('/counters/sessions/open', subscription_controller_1.openSession);
+router.get('/counters/sessions/:id/summary', subscription_controller_1.getSessionSummary);
+router.post('/counters/sessions/close', subscription_controller_1.closeSession);
+exports.default = router;
