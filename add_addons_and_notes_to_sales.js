@@ -1,10 +1,14 @@
 import mysql from 'mysql2/promise';
+import dotenv from 'dotenv';
+import path from 'path';
+
+dotenv.config();
 
 async function migrate() {
   const masterConnection = await mysql.createConnection({
-    host: 'localhost',
-    user: 'root',
-    password: '',
+    host: process.env.DB_HOST || 'localhost',
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '',
     database: 'kms_master'
   });
 
@@ -15,9 +19,9 @@ async function migrate() {
     console.log(`Migrating database ${dbName}...`);
     try {
       const conn = await mysql.createConnection({
-        host: 'localhost',
-        user: 'root',
-        password: '',
+        host: process.env.DB_HOST || 'localhost',
+        user: process.env.DB_USER || 'root',
+        password: process.env.DB_PASSWORD || '',
         database: dbName
       });
 
