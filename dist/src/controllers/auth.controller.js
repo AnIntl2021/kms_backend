@@ -235,8 +235,8 @@ exports.getAuditLogs = getAuditLogs;
 const createUser = async (req, res) => {
     try {
         const { username, email, password, role_id, branch_id, first_name, last_name, status } = req.body;
-        // Check subscription limits
-        const [countRows] = await db_1.default.execute('SELECT COUNT(*) as count FROM admins WHERE deleted_at IS NULL');
+        // Check subscription limits (exclude admin_id = 1 which is the tenant super admin account)
+        const [countRows] = await db_1.default.execute('SELECT COUNT(*) as count FROM admins WHERE deleted_at IS NULL AND admin_id != 1');
         const currentCount = countRows[0].count;
         const dbName = req.user?.tenant_db;
         if (dbName && dbName !== 'kms_master') {
