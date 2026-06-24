@@ -401,26 +401,33 @@ export const getSessionSummary = async (req: Request, res: Response) => {
 
     const [salesRows]: any = await pool.execute(
       `SELECT 
-        COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total_amount ELSE 0 END), 0) as cash_sales,
-        COALESCE(SUM(CASE WHEN payment_method = 'card' THEN total_amount ELSE 0 END), 0) as card_sales,
-        COALESCE(SUM(total_amount), 0) as total_sales
+        payment_method,
+        COALESCE(SUM(final_amount), 0) as amount
        FROM sales_orders
-       WHERE branch_id = ? AND counter_id = ? AND created_at >= ? AND created_at <= ? AND deleted_at IS NULL`,
+       WHERE branch_id = ? AND counter_id = ? AND created_at >= ? AND created_at <= ? AND deleted_at IS NULL
+       GROUP BY payment_method`,
       [session.branch_id, session.counter_id, openedAt, closedAt]
     );
 
-    const summary = salesRows[0];
+    const breakdown = salesRows.map((r: any) => ({
+      method: r.payment_method,
+      amount: Number(r.amount)
+    })).filter((r: any) => r.amount > 0);
+
+    const cashRow = salesRows.find((r: any) => r.payment_method.toLowerCase() === 'cash');
+    const cashSales = cashRow ? Number(cashRow.amount) : 0;
+    
+    const totalSales = salesRows.reduce((sum: number, r: any) => sum + Number(r.amount), 0);
     const openingBalance = Number(session.opening_balance);
-    const expectedCash = openingBalance + Number(summary.cash_sales);
+    const expectedCash = openingBalance + cashSales;
 
     return successResponse(res, {
       session,
       sales: {
-        cash_sales: summary.cash_sales,
-        card_sales: summary.card_sales,
-        total_sales: summary.total_sales,
         opening_balance: openingBalance,
-        expected_cash: expectedCash
+        expected_cash: expectedCash,
+        total_sales: totalSales,
+        breakdown: breakdown
       }
     });
 
